@@ -1,0 +1,681 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coasonix.local/schemas/coasonix-v1.schema.json",
+  "title": "Coasonix v1 Schema Registry",
+  "type": "object",
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^TASK-[A-Za-z0-9_-]+$"
+    },
+    "requestId": {
+      "type": "string",
+      "pattern": "^REQ-[A-Za-z0-9_-]+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^[A-Za-z]:[\\\\/]" },
+          { "pattern": "^/" },
+          { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" }
+        ]
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "partial",
+        "error",
+        "timeout",
+        "invalid_input",
+        "permission_denied",
+        "schema_validation_failed",
+        "reasonix_failed",
+        "artifact_not_found"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "needs_fix", "risky", "unknown", "not_applicable"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["blocker", "major", "minor", "note"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "permissionLevel": {
+      "type": "string",
+      "enum": ["L0_READONLY", "L1_DIFF_REVIEW", "L2_PATCH_ONLY", "L3_ISOLATED_WORKTREE"]
+    },
+    "runtimeDecision": {
+      "type": "string",
+      "enum": ["allow", "deny", "require_approval", "retryable_error", "fatal_error"]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "category", "issue", "evidence", "recommendation", "confidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "severity": { "$ref": "#/$defs/severity" },
+        "category": { "type": "string", "minLength": 1 },
+        "file": { "$ref": "#/$defs/relativePath" },
+        "line": { "type": "integer", "minimum": 1 },
+        "issue": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 },
+        "recommendation": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "files_read": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "tools_used": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reasonix_runtime_version": { "type": "string" },
+        "cache_key": { "type": "string" },
+        "codex_session_id": { "type": "string" },
+        "task_namespace": { "type": "string" },
+        "tenant_id_or_user_id": { "type": "string" },
+        "repo_root_realpath": { "type": "string" },
+        "worktree_id": { "type": "string" },
+        "base_branch": { "type": "string" },
+        "snapshot_id": { "type": "string", "pattern": "^SNAP-[A-Za-z0-9_-]+$" },
+        "base_revision": { "type": "string" },
+        "lane": {
+          "type": "string",
+          "enum": ["review", "security", "debug", "performance", "architecture", "patch"]
+        },
+        "project_key_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "session_key_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "static_prefix_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" }
+      }
+    },
+    "routingMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_key_hash", "session_key_hash", "lane"],
+      "properties": {
+        "project_key_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "session_key_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "task_namespace": { "type": "string" },
+        "codex_session_id": { "type": "string" },
+        "tenant_id_or_user_id": { "type": "string" },
+        "repo_root_realpath": { "type": "string" },
+        "worktree_id": { "type": "string" },
+        "base_branch": { "type": "string" },
+        "snapshot_id": { "type": "string", "pattern": "^SNAP-[A-Za-z0-9_-]+$" },
+        "base_revision": { "type": "string" },
+        "lane": {
+          "type": "string",
+          "enum": ["review", "security", "debug", "performance", "architecture", "patch"]
+        },
+        "static_prefix_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "schema_family": { "type": "string" },
+        "policy_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "reasonix_runtime_version": { "type": "string" }
+      }
+    },
+    "baseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "confidence"],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "findings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/finding" },
+          "default": []
+        },
+        "tests_to_run": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "metadata": { "$ref": "#/$defs/metadata" }
+      }
+    },
+    "task_state_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "state", "round", "reasonix_calls", "patch_attempts", "test_failure_rounds", "required_verification_gaps", "optional_verification_gaps", "approval"],
+      "properties": {
+        "schema_version": { "const": "task_state_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "state": {
+          "type": "string",
+          "enum": [
+            "created",
+            "planning",
+            "editing",
+            "testing",
+            "delegating_to_reasonix",
+            "reasonix_result_pending",
+            "deciding",
+            "patch_checking",
+            "patch_applying",
+            "verifying",
+            "waiting_for_approval",
+            "stopped_by_limit",
+            "failed",
+            "complete",
+            "cancelled"
+          ]
+        },
+        "round": { "type": "integer", "minimum": 0 },
+        "reasonix_calls": { "type": "integer", "minimum": 0 },
+        "patch_attempts": { "type": "integer", "minimum": 0 },
+        "test_failure_rounds": { "type": "integer", "minimum": 0 },
+        "required_verification_gaps": { "type": "array", "items": { "type": "string" } },
+        "optional_verification_gaps": { "type": "array", "items": { "type": "string" } },
+        "approval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "type": "string", "enum": ["not_required", "pending", "approved", "denied"] },
+            "request_id": { "anyOf": [{ "$ref": "#/$defs/requestId" }, { "type": "null" }] }
+          }
+        },
+        "last_transition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to", "event"],
+          "properties": {
+            "from": { "type": "string" },
+            "to": { "type": "string" },
+            "event": { "type": "string" }
+          }
+        }
+      }
+    },
+    "review_result_v1": {
+      "allOf": [
+        { "$ref": "#/$defs/baseResult" },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": { "const": "review_result_v1" }
+          }
+        }
+      ]
+    },
+    "security_audit_v1": {
+      "allOf": [
+        { "$ref": "#/$defs/baseResult" },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": { "const": "security_audit_v1" },
+            "threats": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "debug_hypothesis_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "hypotheses", "confidence"],
+      "properties": {
+        "schema_version": { "const": "debug_hypothesis_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "hypotheses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "hypothesis", "evidence", "next_probe", "confidence"],
+            "properties": {
+              "id": { "type": "string" },
+              "hypothesis": { "type": "string" },
+              "evidence": { "type": "string" },
+              "next_probe": { "type": "string" },
+              "confidence": { "$ref": "#/$defs/confidence" }
+            }
+          }
+        },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "metadata": { "$ref": "#/$defs/metadata" }
+      }
+    },
+    "architecture_options_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "options", "confidence"],
+      "properties": {
+        "schema_version": { "const": "architecture_options_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "description", "tradeoffs", "risks", "confidence"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "tradeoffs": { "type": "array", "items": { "type": "string" } },
+              "risks": { "type": "array", "items": { "type": "string" } },
+              "confidence": { "$ref": "#/$defs/confidence" }
+            }
+          }
+        },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "metadata": { "$ref": "#/$defs/metadata" }
+      }
+    },
+    "performance_review_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "findings", "bottlenecks", "benchmark_plan", "profiling_commands", "tests_to_run", "confidence"],
+      "properties": {
+        "schema_version": { "const": "performance_review_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+        "bottlenecks": { "type": "array", "items": { "type": "string" } },
+        "benchmark_plan": { "type": "array", "items": { "type": "string" } },
+        "profiling_commands": { "type": "array", "items": { "type": "string" } },
+        "tests_to_run": { "type": "array", "items": { "type": "string" } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "metadata": { "$ref": "#/$defs/metadata" }
+      }
+    },
+    "patch_proposal_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "patch_format", "patch", "files_changed", "tests_to_run", "confidence"],
+      "properties": {
+        "schema_version": { "const": "patch_proposal_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "patch_format": { "const": "unified_diff" },
+        "patch": { "type": "string", "minLength": 1 },
+        "files_changed": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "tests_to_run": { "type": "array", "items": { "type": "string" } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "metadata": { "$ref": "#/$defs/metadata" }
+      }
+    },
+    "test_plan_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "test_cases", "confidence"],
+      "properties": {
+        "schema_version": { "const": "test_plan_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "test_cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "risk_area", "description", "command_or_method"],
+            "properties": {
+              "id": { "type": "string" },
+              "risk_area": { "type": "string" },
+              "description": { "type": "string" },
+              "command_or_method": { "type": "string" }
+            }
+          }
+        },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "metadata": { "$ref": "#/$defs/metadata" }
+      }
+    },
+    "context_projection_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "source_artifacts", "summary", "relevant_files", "key_decisions", "open_questions", "risk_signals", "redactions", "projection_hash"],
+      "properties": {
+        "schema_version": { "const": "context_projection_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "source_artifacts": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "summary": { "type": "string" },
+        "relevant_files": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "key_decisions": { "type": "array", "items": { "type": "string" } },
+        "open_questions": { "type": "array", "items": { "type": "string" } },
+        "risk_signals": { "type": "array", "items": { "type": "string" } },
+        "redactions": { "type": "array", "items": { "type": "string" } },
+        "threat_summary": { "type": "array", "items": { "type": "string" } },
+        "untrusted_instruction_markers": { "type": "array", "items": { "type": "string" } },
+        "scope_expansion_attempts": { "type": "array", "items": { "type": "string" } },
+        "policy_sensitive_paths": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "projection_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" }
+      }
+    },
+    "codex_decision_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "codex_decision", "rationale", "verification_required"],
+      "properties": {
+        "schema_version": { "const": "codex_decision_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "codex_decision": {
+          "type": "string",
+          "enum": ["accept", "partial_accept", "reject", "ask_human", "retry_self", "retry_reasonix_once", "stop_by_limit"]
+        },
+        "accepted_findings": { "type": "array", "items": { "type": "string" } },
+        "rejected_findings": { "type": "array", "items": { "type": "string" } },
+        "rationale": { "type": "string" },
+        "verification_required": { "type": "boolean" }
+      }
+    },
+    "patch_safety_report_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "files_checked", "blocked_reasons", "requires_human_approval"],
+      "properties": {
+        "schema_version": { "const": "patch_safety_report_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "files_checked": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "blocked_reasons": { "type": "array", "items": { "type": "string" } },
+        "requires_human_approval": { "type": "boolean" }
+      }
+    },
+    "patch_transaction_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "transaction_id", "state", "patch_hash", "base_revision", "files_changed", "rollback_mode", "verification_required"],
+      "properties": {
+        "schema_version": { "const": "patch_transaction_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "transaction_id": { "type": "string", "pattern": "^PATCH-TXN-[A-Za-z0-9_-]+$" },
+        "state": {
+          "type": "string",
+          "enum": ["proposed", "safety_checked", "dry_run_passed", "applying", "applied", "verifying", "committed", "rolled_back", "failed", "rejected"]
+        },
+        "patch_hash": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+        "base_revision": { "type": "string", "minLength": 1 },
+        "files_changed": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "rollback_mode": {
+          "type": "string",
+          "enum": ["reset_to_snapshot", "revert_transaction_commit", "discard_isolated_worktree", "manual_repair_required"]
+        },
+        "verification_required": { "type": "boolean" }
+      }
+    },
+    "verification_result_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "verification_type", "status", "command_or_method", "artifact_refs", "required"],
+      "properties": {
+        "schema_version": { "const": "verification_result_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "verification_type": {
+          "type": "string",
+          "enum": ["unit_test", "integration_test", "lint", "typecheck", "build", "security_scan", "benchmark", "profiling", "manual_approval", "static_review"]
+        },
+        "status": { "type": "string", "enum": ["passed", "failed", "skipped", "unavailable"] },
+        "command_or_method": { "type": "string" },
+        "artifact_refs": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "required": { "type": "boolean" },
+        "gap_reason": { "type": "string" }
+      }
+    },
+    "audit_event_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "ts", "task_id", "actor", "event", "status"],
+      "properties": {
+        "schema_version": { "const": "audit_event_v1" },
+        "ts": { "type": "string", "format": "date-time" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "actor": { "type": "string", "enum": ["codex", "reasonix", "wrapper", "ci", "human", "policy"] },
+        "event": { "type": "string" },
+        "status": { "type": "string" },
+        "artifact_paths": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "details": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "human_approval_request_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "reason", "requested_action", "risk_summary", "artifacts", "status"],
+      "properties": {
+        "schema_version": { "const": "human_approval_request_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "reason": { "type": "string" },
+        "requested_action": { "type": "string" },
+        "risk_summary": { "type": "string" },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+        "status": { "type": "string", "enum": ["pending", "approved", "denied", "cancelled"] }
+      }
+    },
+    "error_result_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "recoverable"],
+      "properties": {
+        "schema_version": { "const": "error_result_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "status": { "$ref": "#/$defs/status" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "summary": { "type": "string" },
+        "recoverable": { "type": "boolean" }
+      }
+    },
+    "transition_request_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "from_state", "to_state", "event"],
+      "properties": {
+        "schema_version": { "const": "transition_request_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "from_state": { "type": "string" },
+        "to_state": { "type": "string" },
+        "event": { "type": "string" }
+      }
+    },
+    "transition_result_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "decision", "from_state", "to_state", "reasons"],
+      "properties": {
+        "schema_version": { "const": "transition_result_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "decision": { "$ref": "#/$defs/runtimeDecision" },
+        "from_state": { "type": "string" },
+        "to_state": { "type": "string" },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "schema_validation_result_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "expected_schema", "valid", "errors"],
+      "properties": {
+        "schema_version": { "const": "schema_validation_result_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "expected_schema": { "type": "string" },
+        "valid": { "type": "boolean" },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "message"],
+            "properties": {
+              "path": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "policy_evaluation_result_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "operation", "decision", "reasons", "requires_human_approval"],
+      "properties": {
+        "schema_version": { "const": "policy_evaluation_result_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "operation": { "type": "string" },
+        "decision": { "$ref": "#/$defs/runtimeDecision" },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "requires_human_approval": { "type": "boolean" }
+      }
+    },
+    "runtime_operation_request_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "operation", "resources"],
+      "properties": {
+        "schema_version": { "const": "runtime_operation_request_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "transition_state",
+            "call_reasonix_tool",
+            "accept_reasonix_result",
+            "route_reasonix_session",
+            "freeze_snapshot",
+            "apply_patch_transaction",
+            "run_verification",
+            "complete_task",
+            "request_human_approval",
+            "resolve_human_approval",
+            "read_artifact",
+            "write_artifact",
+            "run_shell",
+            "open_network",
+            "reuse_cache_result"
+          ]
+        },
+        "expected_state": { "type": "string" },
+        "next_state": { "type": "string" },
+        "permission_level": { "$ref": "#/$defs/permissionLevel" },
+        "payload_schema": { "type": "string" },
+        "routing": { "$ref": "#/$defs/routingMetadata" },
+        "resources": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "tool_name": { "type": "string" },
+            "paths": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } },
+            "command": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "runtime_decision_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "task_id", "operation", "decision", "engine_results", "reasons"],
+      "properties": {
+        "schema_version": { "const": "runtime_decision_v1" },
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "operation": { "type": "string" },
+        "decision": { "$ref": "#/$defs/runtimeDecision" },
+        "engine_results": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "state", "policy"],
+          "properties": {
+            "schema": { "$ref": "#/$defs/runtimeDecision" },
+            "state": { "$ref": "#/$defs/runtimeDecision" },
+            "policy": { "$ref": "#/$defs/runtimeDecision" }
+          }
+        },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "audit_event_id": { "type": "string" }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/task_state_v1" },
+    { "$ref": "#/$defs/review_result_v1" },
+    { "$ref": "#/$defs/security_audit_v1" },
+    { "$ref": "#/$defs/debug_hypothesis_v1" },
+    { "$ref": "#/$defs/architecture_options_v1" },
+    { "$ref": "#/$defs/performance_review_v1" },
+    { "$ref": "#/$defs/patch_proposal_v1" },
+    { "$ref": "#/$defs/test_plan_v1" },
+    { "$ref": "#/$defs/context_projection_v1" },
+    { "$ref": "#/$defs/codex_decision_v1" },
+    { "$ref": "#/$defs/patch_safety_report_v1" },
+    { "$ref": "#/$defs/patch_transaction_v1" },
+    { "$ref": "#/$defs/verification_result_v1" },
+    { "$ref": "#/$defs/audit_event_v1" },
+    { "$ref": "#/$defs/human_approval_request_v1" },
+    { "$ref": "#/$defs/error_result_v1" },
+    { "$ref": "#/$defs/transition_request_v1" },
+    { "$ref": "#/$defs/transition_result_v1" },
+    { "$ref": "#/$defs/schema_validation_result_v1" },
+    { "$ref": "#/$defs/policy_evaluation_result_v1" },
+    { "$ref": "#/$defs/runtime_operation_request_v1" },
+    { "$ref": "#/$defs/runtime_decision_v1" }
+  ]
+}
