@@ -4,6 +4,12 @@
 
 本文件定义 Coasonix 的执行内核。
 
+将本文件中的门禁规则转成可执行实现时，必须同时遵守
+[06-executable-runtime-details.md](06-executable-runtime-details.md)。该文件定义
+canonicalization、path matcher、shell argv parser、network exceptions、cache key、
+audit storage、verification runner、human approval lifecycle 和 patch dry-run 的
+确定性细节。
+
 ## 1. Runtime Positioning
 
 Coasonix 当前阶段：
@@ -470,18 +476,19 @@ Safe runtime construction order:
 1. Schema Enforcement Layer
 2. State Machine Runtime Engine
 3. Policy Execution Engine
-4. Audit writer
-5. Runtime Kernel composition
-6. Read-only reasonix.review_diff path
-7. Reasonix Project / Session Lane Router
-8. Context Projector integration
-9. Parallel read-only fan-out
-10. Patch Safety Checker
-11. Patch Transaction Model
-12. performance_review benchmark/profiling enforcement
+4. Executable runtime canonicalization and matcher rules
+5. Audit writer
+6. Runtime Kernel composition
+7. Read-only reasonix.review_diff path
+8. Reasonix Project / Session Lane Router
+9. Context Projector integration
+10. Parallel read-only fan-out
+11. Patch Safety Checker
+12. Patch Transaction Model
+13. performance_review benchmark/profiling enforcement
 ```
 
-Patch generation must remain disabled until steps 1-11 are implemented.
+Patch generation must remain disabled until steps 1-12 are implemented.
 
 ## 15. Runtime Conformance Tests
 

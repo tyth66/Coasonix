@@ -19,7 +19,7 @@
 8. 审计边界基本成立：关键事件、决策和验证结果需要 JSONL 记录。
 ```
 
-剩余工作不在概念层，而在工程实现层：需要把文档中的 state machine runner、schema validator、policy matcher、patch checker、audit writer、observability exporter 和 STDIO Wrapper 转成可运行实现。
+剩余工作不在概念层，而在工程实现层：需要把文档中的 state machine runner、schema validator、policy matcher、patch checker、audit writer、observability exporter 和 STDIO Wrapper 转成可运行实现。可执行 runtime 细节已经收束到 `../02-runtime/06-executable-runtime-details.md`，实现时应以该文件作为 matcher、canonicalization、cache、audit、verification 和 approval 的确定性补充契约。
 
 ## 2. 控制闭环复审
 
@@ -51,7 +51,7 @@ User / Issue / CI
 |---|---|---|
 | Codex final authority | strong | Role file defines Codex as only primary agent |
 | Reasonix advisory status | strong | Tool and safety specs reject Reasonix as instruction source |
-| Codex decision record | medium | Decision gate now defined; no concrete schema file yet |
+| Codex decision record | medium-high | Decision gate and codex_decision_v1 registry entry exist; implementation still needed |
 | Human approval hard block | medium | Rule exists; implementation state machine still needed |
 
 ### 2.4 Residual Risk
@@ -88,11 +88,11 @@ initialize
 | STDIO transport | strong | Rules defined for stdout/stderr and newline JSON-RPC |
 | HTTP transport | medium | Security requirements defined; no deployment profile yet |
 | tools/list consistency | strong | Seven tools listed and performance_review now defined |
-| error separation | medium | Concept defined; concrete error schema still needed |
+| error separation | medium-high | Concept and error_result_v1 registry entry exist; implementation still needed |
 
 ### 3.4 Residual Risk
 
-The protocol path is ready for an MVP Wrapper, but `error_result_v1.json` should be formalized before implementation.
+The protocol path is ready for an MVP Wrapper. `error_result_v1` is present in the v1 registry, but protocol-error versus tool-execution-error mapping still needs conformance tests.
 
 ## 4. Tool / Schema 闭环复审
 
@@ -133,13 +133,13 @@ human_approval_request_v1
 |---|---|---|
 | Tool inventory | strong | All seven tools have named sections |
 | Performance tool | strong | Now defined as performance risk review, not proof |
-| Input envelope | medium | Example exists; strict JSON Schema missing |
-| Output envelope | medium | Example exists; strict JSON Schema missing |
-| Registry completeness | medium | Schema names known; files not implemented |
+| Input envelope | medium | Example exists; standalone envelope schema still missing |
+| Output envelope | medium-high | Tool result schemas exist; shared envelope semantics still need conformance tests |
+| Registry completeness | medium-high | Required schema names are represented in the v1 registry; request/envelope gaps remain |
 
 ### 4.4 Residual Risk
 
-The schema layer is specified enough to implement, but not yet machine-enforced. Without actual JSON Schema files, Wrapper behavior can drift.
+The schema layer is specified enough to implement, but not yet machine-enforced. Without a validator and conformance tests, Wrapper behavior can drift even when registry entries exist.
 
 ## 5. Context 闭环复审
 
@@ -170,12 +170,12 @@ Codex Global Context
 |---|---|---|
 | Context ownership | strong | Codex owns global context; Reasonix receives projection |
 | Hidden memory ban | strong | Tools do not remember; state object owns continuity |
-| Projection process | medium | Processing order defined; redaction catalog missing |
-| Cache boundary | medium | Stable prefix principle exists; cache key schema missing |
+| Projection process | medium-high | Processing order and minimum redaction catalog defined; projector implementation missing |
+| Cache boundary | medium-high | Stable prefix principle and canonical cache key fields defined; cache implementation missing |
 
 ### 5.4 Residual Risk
 
-Context Projector is the largest quality risk. It needs concrete redaction rules, log compression rules, and projection tests with adversarial secrets.
+Context Projector is the largest quality risk. It now has minimum redaction rules, but still needs log compression rules and projection tests with adversarial secrets.
 
 ## 6. Execution and Safety 闭环复审
 
@@ -205,14 +205,14 @@ tools/call
 | Item | Status | Evidence |
 |---|---|---|
 | Permission model | strong | L0-L4 defined; L4 forbidden |
-| Filesystem policy | medium | allowlist/denylist exists; matcher semantics missing |
-| Shell policy | medium | allowlist exists; command parser rules missing |
-| Network policy | medium | default deny exists; exception process missing |
+| Filesystem policy | medium-high | allowlist/denylist and matcher semantics defined; implementation missing |
+| Shell policy | medium-high | argv-level parser rules defined; implementation missing |
+| Network policy | medium-high | default deny and exception shape defined; implementation missing |
 | Terminal isolation | strong | Shared writable terminal forbidden |
 
 ### 6.4 Residual Risk
 
-The policy model must avoid shell-string matching. Command allowlists need argv-level parsing, not substring checks.
+The policy model must avoid shell-string matching. Command allowlists are now specified at argv level, but still need implementation and bypass tests.
 
 ## 7. Patch 闭环复审
 
@@ -245,7 +245,7 @@ Reasonix patch proposal
 | Patch proposal status | strong | L2_PATCH_ONLY produces diff but does not write worktree |
 | Safety checks | medium-high | Strong checklist exists; implementation still needed |
 | Test weakening detection | medium | Mentioned; rule details still needed |
-| Dry-run apply | medium | Required conceptually; command contract missing |
+| Dry-run apply | medium-high | Dry-run and transaction command contract defined; implementation missing |
 
 ### 7.4 Residual Risk
 
@@ -279,7 +279,7 @@ Codex accepts recommendation
 | Item | Status | Evidence |
 |---|---|---|
 | CI as validation layer | strong | Framework principle defines CI as verification layer |
-| Claim/evidence mapping | medium | Defined in critical nodes; not yet in existing tool schemas |
+| Claim/evidence mapping | medium-high | Defined in critical nodes and executable runtime details; runner and schema integration missing |
 | Performance evidence | strong | performance_review explicitly requires benchmark/profiling for proof |
 | Completion gate | medium | Principle exists; no state machine yet |
 
@@ -318,8 +318,8 @@ task_started
 |---|---|---|
 | Audit principle | strong | JSONL audit defined |
 | Required fields | strong | Existing docs list key fields |
-| Event taxonomy | medium | Critical node doc expands events; schema missing |
-| Append-only guarantee | medium | Defined; storage enforcement missing |
+| Event taxonomy | medium-high | Minimum event taxonomy defined; schema enum and implementation missing |
+| Append-only guarantee | medium-high | Append-only storage rules defined; storage enforcement missing |
 
 ### 9.4 Residual Risk
 
@@ -367,7 +367,7 @@ Profiling commands can be unsafe if treated like ordinary test commands. They ne
 |---|---|---|
 | Architecture | high | Control and role boundaries are clear |
 | Deterministic runtime spec | high | State, schema, policy, transaction, concurrency, cache, observability, and versioning are defined |
-| Runtime enforcement design | high | Runtime Enforcement Layer and three core engines are specified |
+| Runtime enforcement design | high | Runtime Enforcement Layer, three core engines, and executable matcher/canonicalization details are specified |
 | MCP MVP | medium-high | STDIO path is concrete |
 | Tool contracts | medium-high | Tool list complete; machine-readable v1 schema registry exists |
 | Context projection | medium-high | Threat model and redaction order defined; projector implementation missing |
@@ -407,14 +407,15 @@ The next implementation work should happen in this order:
 ```text
 1. Implement Draft 2020-12 schema validator using ../schemas/coasonix-v1.schema.json.
 2. Implement Global Task State Machine runner.
-3. Implement path matcher and Patch Safety Checker.
-4. Implement Policy Execution Engine for path, permission, shell, network, patch, approval, and cache gates.
-5. Compose Runtime Kernel decision flow.
-6. Implement Context Projector redaction, hashing, and adversarial tests.
-7. Implement audit_event_v1 writer and trace/metrics exporters.
-8. Implement benchmark/profiling artifact capture for performance_review.
-9. Implement STDIO Wrapper MVP.
-10. Add adversarial tests for prompt injection, path traversal, schema mismatch, secret leakage, concurrency merge, cache invalidation, transaction rollback, runtime deny, and loop limit.
+3. Implement executable canonicalization, path matcher, shell argv parser, network exception matcher, and cache key builder from ../02-runtime/06-executable-runtime-details.md.
+4. Implement Patch Safety Checker and dry-run/apply transaction contract.
+5. Implement Policy Execution Engine for path, permission, shell, network, patch, approval, and cache gates.
+6. Compose Runtime Kernel decision flow.
+7. Implement Context Projector redaction, hashing, and adversarial tests.
+8. Implement audit_event_v1 writer and trace/metrics exporters.
+9. Implement verification runner and benchmark/profiling artifact capture for performance_review.
+10. Implement STDIO Wrapper MVP.
+11. Add adversarial tests for prompt injection, path traversal, schema mismatch, secret leakage, concurrency merge, cache invalidation, transaction rollback, runtime deny, shell parser bypass, audit corruption, approval mismatch, and loop limit.
 ```
 
 ## 14. Final Reassessment
