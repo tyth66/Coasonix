@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, Cargo workspace, Bun, TypeScript ESM, JSON-RPC 2.0 over stdio, JSON Schema 2020-12, SQLite.
 
-**Current Status:** M0, M1, M2, M3, and M4 are implemented, reviewed, verified, and committed in separate local phases. Continue with M5 in a later execution pass.
+**Current Status:** M0, M1, M2, M3, M4, and M5 are implemented, reviewed, verified, and committed in separate local phases. Continue with M6 in a later execution pass.
 
 ---
 
@@ -44,6 +44,7 @@ M1: Rust schema and canonicalization foundation
 M2: Rust state, artifact path, shell, and minimum policy foundation
 M3: Rust SQLite persistence and audit foundation
 M4: RuntimeKernel decision merge and persistence composition
+M5: Rust JSON-RPC worker
 ```
 
 It intentionally does not implement MCP, real Reasonix invocation, patch
@@ -672,12 +673,140 @@ cargo fmt --all -- --check
   exited 0
 ```
 
+## Task 8: Rust JSON-RPC Worker
+
+**Files:**
+- Modify: `Cargo.lock`
+- Modify: `crates/coasonix-runtime-worker/Cargo.toml`
+- Modify: `crates/coasonix-runtime-worker/src/main.rs`
+- Test: `crates/coasonix-runtime-worker/tests/json_rpc_worker.rs`
+
+- [x] **Step 1: Write failing M5 tests**
+
+Test behaviors:
+
+```text
+valid initialize succeeds after migrations
+unknown method rejected
+notification rejected
+malformed JSON rejected
+invalid params rejected
+evaluate_operation returns runtime_decision_v1
+validate_schema returns schema_validation_result_v1
+worker stderr does not pollute stdout
+stdout contains JSON-RPC frames only
+worker shutdown is explicit
+runtime.write_audit returns an audit record after initialize
+policy denial still returns a runtime_decision_v1 result, not JSON-RPC success-as-authorization
+```
+
+- [x] **Step 2: Verify tests fail**
+
+Run:
+
+```text
+cargo test -p coasonix-runtime-worker --test json_rpc_worker -- --nocapture
+```
+
+Expected before implementation: tests fail because the worker only prints a
+scaffold line to stdout, which is not a JSON-RPC frame.
+
+- [x] **Step 3: Implement minimal JSON-RPC worker**
+
+Implemented:
+
+```text
+line-delimited JSON-RPC 2.0 stdin/stdout loop
+runtime.initialize
+runtime.validate_schema
+runtime.evaluate_operation
+runtime.write_audit
+runtime.shutdown
+Parse error, Invalid Request, Method not found, Invalid params, and runtime_unavailable mappings
+JSON-RPC id to request_id mapping for REQ-* ids
+RuntimeKernel-backed validate/evaluate/audit dispatch
+explicit shutdown response and process exit
+```
+
+The worker does not expose post-v1 methods and does not implement MCP behavior.
+It returns `runtime_decision_v1` as the result for `runtime.evaluate_operation`;
+the future adapter must still require `result.decision == "allow"` before
+treating any call as authorized.
+
+- [x] **Step 4: Verify M5 tests pass**
+
+Run:
+
+```text
+cargo test -p coasonix-runtime-worker --test json_rpc_worker -- --nocapture
+```
+
+Expected: all JSON-RPC worker tests pass.
+
+- [x] **Step 5: Review M5 against blueprint**
+
+Review checks:
+
+```text
+worker is a JSON-RPC 2.0 stdio process, not an MCP server
+stdout contains only JSON-RPC responses
+stderr is not used for ordinary responses
+one input line maps to one complete JSON-RPC frame
+notifications are rejected
+unknown methods return Method not found
+malformed frames return Parse error
+invalid params return Invalid params
+only runtime.initialize, runtime.validate_schema, runtime.evaluate_operation, runtime.write_audit, and runtime.shutdown are exposed
+request id maps directly to request_id for REQ-* ids
+initialize creates the SQLite store through RuntimeKernel migrations
+validate_schema returns schema_validation_result_v1
+evaluate_operation returns runtime_decision_v1
+JSON-RPC success does not by itself authorize side effects
+shutdown is explicit
+no TypeScript worker client, MCP adapter, or real Reasonix invocation was added
+```
+
+- [x] **Step 6: Fix review findings**
+
+Local review found and fixed:
+
+```text
+The first implementation carried an unused runtime_decision_error helper that
+could imply denied runtime decisions should become JSON-RPC errors. It was
+removed so evaluate_operation consistently returns runtime_decision_v1 results,
+leaving authorization to the adapter's future result.decision == allow gate.
+
+Review also added explicit coverage for runtime.write_audit and the acceptance
+gate that policy denial remains a runtime_decision_v1 result rather than a
+JSON-RPC error.
+```
+
+- [x] **Step 7: Run full verification and update implementation docs**
+
+Fresh verification after review fixes:
+
+```text
+cargo test --workspace
+  coasonix-runtime-core: 1 smoke, 7 artifact, 5 canonical, 8 policy,
+  8 runtime kernel, 13 schema registry, 12 sqlite store, and 4 state tests
+  passed
+  coasonix-runtime-worker: 11 json_rpc_worker tests passed; binary compiled
+
+bun test
+  packages/reasonix-expert-mcp/src/index.test.ts passed
+
+python -m json.tool schemas/coasonix-v1.schema.json > $null
+  exited 0
+
+cargo fmt --all -- --check
+  exited 0
+```
+
 ## Full v1 Later Milestones
 
 Future execution passes should continue with:
 
 ```text
-M5: Rust JSON-RPC worker
 M6: TypeScript worker client
 M7: MCP adapter tools/list and tools/call
 M8: mock Reasonix review_diff vertical slice

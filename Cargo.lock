@@ -118,6 +118,8 @@ name = "coasonix-runtime-worker"
 version = "0.1.0"
 dependencies = [
  "coasonix-runtime-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
