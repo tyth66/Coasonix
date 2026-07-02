@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, Cargo workspace, Bun, TypeScript ESM, JSON-RPC 2.0 over stdio, JSON Schema 2020-12, SQLite.
 
-**Current Status:** M0, M1, M2, M3, M4, and M5 are implemented, reviewed, verified, and committed in separate local phases. Continue with M6 in a later execution pass.
+**Current Status:** M0, M1, M2, M3, M4, M5, and M6 are implemented, reviewed, verified, and committed in separate local phases. Continue with M7 in a later execution pass.
 
 ---
 
@@ -45,6 +45,7 @@ M2: Rust state, artifact path, shell, and minimum policy foundation
 M3: Rust SQLite persistence and audit foundation
 M4: RuntimeKernel decision merge and persistence composition
 M5: Rust JSON-RPC worker
+M6: TypeScript worker client
 ```
 
 It intentionally does not implement MCP, real Reasonix invocation, patch
@@ -802,12 +803,129 @@ cargo fmt --all -- --check
   exited 0
 ```
 
+## Task 9: TypeScript Worker Client
+
+**Files:**
+- Create: `packages/reasonix-expert-mcp/src/worker/client.ts`
+- Create: `packages/reasonix-expert-mcp/src/worker/protocol.ts`
+- Create: `packages/reasonix-expert-mcp/src/worker/errors.ts`
+- Test: `packages/reasonix-expert-mcp/src/worker/client.test.ts`
+
+- [x] **Step 1: Write failing M6 tests**
+
+Test behaviors:
+
+```text
+JSON-RPC request framing writes one complete request per line
+non JSON-RPC response frames are rejected
+client sends framed requests and receives JSON-RPC results
+shutdown is explicit
+timeout maps to runtime_unavailable and stops the worker
+worker crash maps to runtime_unavailable
+worker JSON-RPC -32008 maps to symbolic runtime_unavailable
+missing worker executable maps to runtime_unavailable
+restart replaces the worker process
+```
+
+- [x] **Step 2: Verify tests fail**
+
+Run:
+
+```text
+bun test packages/reasonix-expert-mcp/src/worker/client.test.ts
+```
+
+Expected before implementation: tests fail because `src/worker/client.ts` and
+`src/worker/protocol.ts` do not exist.
+
+- [x] **Step 3: Implement minimal TypeScript worker client**
+
+Implemented:
+
+```text
+encodeRequestFrame
+parseResponseFrame
+RuntimeWorkerError
+RuntimeWorkerClient.call
+RuntimeWorkerClient.shutdown
+RuntimeWorkerClient.restart
+RuntimeWorkerClient.isRunning
+request timeout cleanup
+worker crash and missing executable handling
+stderr pipe draining so diagnostics cannot block the worker
+JSON-RPC runtime error code mapping to symbolic runtime_* codes
+```
+
+The client owns TypeScript-side process supervision and JSON-RPC framing only.
+It does not implement MCP tools/list, tools/call, Reasonix invocation, or any
+security decision logic.
+
+- [x] **Step 4: Verify M6 tests pass**
+
+Run:
+
+```text
+bun test packages/reasonix-expert-mcp/src/worker/client.test.ts
+```
+
+Expected: all TypeScript worker client tests pass.
+
+- [x] **Step 5: Review M6 against blueprint**
+
+Review checks:
+
+```text
+JSON-RPC frames are one line per request
+malformed/non-JSON-RPC stdout is rejected
+timeout rejects the pending call and stops the worker
+crash rejects pending calls as runtime_unavailable
+missing executable maps to runtime_unavailable
+runtime JSON-RPC errors map to symbolic runtime_* codes
+restart replaces the worker process without resetting request id allocation
+shutdown sends runtime.shutdown and leaves the client not running
+stderr is drained as diagnostics and never treated as structured output
+no MCP adapter, tools/list, tools/call, or Reasonix process invocation was added
+```
+
+- [x] **Step 6: Fix review findings**
+
+Local review found and fixed:
+
+```text
+The first implementation mapped worker JSON-RPC errors to raw numeric strings.
+Runtime error mappings now convert v1 worker codes such as -32008 to symbolic
+runtime_unavailable.
+
+RuntimeWorkerError was split into worker/errors.ts to avoid a protocol/client
+import cycle. shutdown() now resets internal stopping state in a finally block
+if the shutdown RPC fails or times out.
+```
+
+- [x] **Step 7: Run full verification and update implementation docs**
+
+Fresh verification after review fixes:
+
+```text
+cargo test --workspace
+  coasonix-runtime-core and coasonix-runtime-worker Rust tests passed, including
+  11 json_rpc_worker tests
+
+bun test
+  packages/reasonix-expert-mcp/src/index.test.ts passed
+  packages/reasonix-expert-mcp/src/worker/client.test.ts passed
+
+python -m json.tool schemas/coasonix-v1.schema.json > $null
+  exited 0
+
+cargo fmt --all -- --check
+  exited 0
+```
+
 ## Full v1 Later Milestones
 
 Future execution passes should continue with:
 
 ```text
-M6: TypeScript worker client
 M7: MCP adapter tools/list and tools/call
 M8: mock Reasonix review_diff vertical slice
 ```
