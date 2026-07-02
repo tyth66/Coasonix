@@ -1,0 +1,14 @@
+{
+  "name": "coasonix",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/reasonix-expert-mcp"
+  ],
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
