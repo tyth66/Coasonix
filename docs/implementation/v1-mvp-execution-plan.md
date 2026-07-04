@@ -77,7 +77,7 @@ packages/reasonix-expert-mcp/src/index.ts
 Stable package command:
 
 ```powershell
-bun --cwd packages/reasonix-expert-mcp run start:mcp
+bun run --silent --cwd=packages/reasonix-expert-mcp start:mcp
 ```
 
 Required environment:
@@ -105,7 +105,7 @@ $env:COASONIX_REPO_ROOT = "D:\path\to\target-repo"
 $env:COASONIX_SCHEMA_PATH = "D:\Coasonix\schemas\coasonix-v1.schema.json"
 $env:COASONIX_RUNTIME_WORKER = "D:\Coasonix\target\debug\coasonix-runtime-worker.exe"
 $env:COASONIX_REASONIX_COMMAND_JSON = '["reasonix","review-diff"]'
-bun --cwd packages/reasonix-expert-mcp run start:mcp
+bun run --silent --cwd=packages/reasonix-expert-mcp start:mcp
 ```
 
 Configuration rules:
@@ -117,6 +117,9 @@ prefer COASONIX_REASONIX_COMMAND_JSON for argv-safe command configuration
 if COASONIX_REASONIX_COMMAND is used, split only simple whitespace argv and reject quoted ambiguity
 never execute through a shell
 do not infer fallback repo roots silently
+start via `bun run --silent` or an equivalent direct executable invocation so stdout stays protocol-only
+point the Reasonix argv at a stdio worker that reads review input from stdin and writes one review_result_v1 JSON object to stdout
+do not point the argv at a GUI-only desktop executable unless it explicitly implements that stdio contract
 ```
 
 ## Initialization Lifecycle
@@ -203,6 +206,7 @@ real Bun server process serves tools/list and tools/call over stdio
 official MCP SDK Client can connect through StdioClientTransport
 transport close shuts the runtime worker down cleanly
 package exposes start:mcp as the stable local server command
+start:mcp invocation is documented with Bun silent mode for protocol-clean stdout
 README documents the minimum runtime environment contract
 ```
 

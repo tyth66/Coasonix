@@ -47,7 +47,7 @@ $env:COASONIX_REPO_ROOT = "D:\path\to\repo"
 $env:COASONIX_SCHEMA_PATH = "D:\Coasonix\schemas\coasonix-v1.schema.json"
 $env:COASONIX_RUNTIME_WORKER = "D:\Coasonix\target\debug\coasonix-runtime-worker.exe"
 $env:COASONIX_REASONIX_COMMAND_JSON = '["reasonix","review-diff"]'
-bun --cwd packages/reasonix-expert-mcp run start:mcp
+bun run --silent --cwd=packages/reasonix-expert-mcp start:mcp
 ```
 
 The server is intentionally narrow: it initializes the Rust runtime worker
@@ -55,6 +55,11 @@ before serving tool calls, exposes only `reasonix.review_diff`, and returns MCP
 `structuredContent` only after Rust validates the Reasonix result schema.
 Use `COASONIX_REASONIX_COMMAND_JSON` to point at the installed Reasonix command
 or at a local mock command when running development smoke tests.
+The `--silent` flag is required for MCP stdio because stdout must contain only
+JSON-RPC protocol frames.
+The configured Reasonix command must be a stdio worker that reads the review
+request from stdin and writes one `review_result_v1` JSON object to stdout;
+launching a GUI-only desktop executable is not sufficient.
 
 Verification:
 

@@ -189,6 +189,51 @@ describe("reasonix-expert MCP stdio server", () => {
     expect(stdout.trim()).toBe("");
     expect(stderr.trim()).toBe("");
   });
+
+  test("package start script writes JSON-RPC frames only to stdout", async () => {
+    const fixture = createFixture("start-script");
+    const workerPath = await runtimeWorkerPath();
+    const child = Bun.spawn([processExec(), "run", "--silent", `--cwd=${join(repoRoot, "packages/reasonix-expert-mcp")}`, "start:mcp"], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        COASONIX_REPO_ROOT: fixture.repo,
+        COASONIX_SCHEMA_PATH: schemaPath,
+        COASONIX_RUNTIME_WORKER: workerPath,
+        COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([processExec()]),
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    processes.push(child);
+
+    child.stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "coasonix-start-script-test", version: "0.0.0" },
+        },
+      })}\n`,
+    );
+    child.stdin.flush();
+
+    const reader = child.stdout.getReader();
+    const { value, done } = await reader.read();
+    expect(done).toBe(false);
+
+    const firstLine = new TextDecoder().decode(value).split("\n")[0];
+    expect(() => JSON.parse(firstLine)).not.toThrow();
+    expect(JSON.parse(firstLine)).toMatchObject({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { serverInfo: { name: "reasonix-expert-mcp" } },
+    });
+  });
 });
 
 function processExec(): string {

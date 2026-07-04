@@ -16,7 +16,7 @@ describe("MCP server operational contract", () => {
   test("top-level README documents the minimum MCP server environment", () => {
     const readme = readFileSync(resolve(repoRoot, "README.md"), "utf8");
 
-    expect(readme).toContain("bun --cwd packages/reasonix-expert-mcp run start:mcp");
+    expect(readme).toContain("bun run --silent --cwd=packages/reasonix-expert-mcp start:mcp");
     expect(readme).toContain("COASONIX_REPO_ROOT");
     expect(readme).toContain("COASONIX_SCHEMA_PATH");
     expect(readme).toContain("COASONIX_RUNTIME_WORKER");
