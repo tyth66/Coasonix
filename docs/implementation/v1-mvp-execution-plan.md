@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, Cargo workspace, Bun, TypeScript ESM, JSON-RPC 2.0 over stdio, JSON Schema 2020-12, SQLite.
 
-**Current Status:** M0, M1, M2, M3, M4, M5, M6, and M7 are implemented, reviewed, verified, and committed in separate local phases. Continue with M8 in a later execution pass.
+**Current Status:** M0 through M8 are implemented, reviewed, verified, and committed in separate local phases. The v1 MVP implementation plan is complete, with final clean-worktree confirmation included in the final audit.
 
 ---
 
@@ -47,6 +47,7 @@ M4: RuntimeKernel decision merge and persistence composition
 M5: Rust JSON-RPC worker
 M6: TypeScript worker client
 M7: MCP adapter tools/list and tools/call gate
+M8: mock Reasonix review_diff vertical slice
 ```
 
 It intentionally does not implement MCP, real Reasonix invocation, patch
@@ -260,6 +261,10 @@ python -m json.tool schemas/coasonix-v1.schema.json > $null
 
 cargo fmt --all -- --check
   exited 0
+
+git diff --check
+  exited 0; Git reported only Windows LF-to-CRLF conversion warnings, with no
+  whitespace errors
 ```
 
 Review outcome:
@@ -1040,13 +1045,142 @@ cargo fmt --all -- --check
   exited 0
 ```
 
-## Full v1 Later Milestones
+## Task 11: Mock Reasonix Review Diff Vertical Slice
 
-Future execution passes should continue with:
+**Files:**
+- Modify: `crates/coasonix-runtime-core/src/kernel/mod.rs`
+- Modify: `crates/coasonix-runtime-core/src/storage/mod.rs`
+- Modify: `crates/coasonix-runtime-core/tests/runtime_kernel.rs`
+- Modify: `packages/reasonix-expert-mcp/src/mcp/tools.ts`
+- Create: `packages/reasonix-expert-mcp/src/reasonix/runner.ts`
+- Create: `packages/reasonix-expert-mcp/src/reasonix/output-normalizer.ts`
+- Test: `packages/reasonix-expert-mcp/src/reasonix/vertical-slice.test.ts`
+
+- [x] **Step 1: Write failing M8 tests**
+
+Test behaviors:
 
 ```text
-M8: mock Reasonix review_diff vertical slice
+success: valid review_result_v1 returns structuredContent
+markdown-fenced JSON is normalized into structuredContent
+timeout returns isError true
+malformed JSON returns isError true
+multiple JSON objects return isError true
+nonzero exit returns isError true
+stderr-only failure returns isError true
+schema mismatch returns schema_validation_failed
+wrong task_id returns schema_validation_failed
+wrong request_id returns schema_validation_failed
+invalid confidence returns schema_validation_failed
+runtime deny prevents mock Reasonix invocation
+runtime.validate_schema persists schema validation evidence
 ```
+
+- [x] **Step 2: Verify tests fail**
+
+Run:
+
+```text
+bun test packages/reasonix-expert-mcp/src/reasonix/vertical-slice.test.ts
+cargo test -p coasonix-runtime-core --test runtime_kernel validate_schema_routes_through_kernel_registry -- --nocapture
+```
+
+Expected before implementation: the vertical slice test fails because
+`reasonix/runner.ts` does not exist, and the Rust evidence test fails because
+`RuntimeStore::schema_validation_count` does not exist.
+
+- [x] **Step 3: Implement mock Reasonix runner and output normalization**
+
+Implemented:
+
+```text
+ReasonixProcessRunner
+extractSingleJsonObject
+markdown-fenced JSON extraction
+Reasonix timeout killing
+stdout/stderr capture
+nonzero exit mapping
+schema_validation_failed for schema mismatch and task/request id mismatch
+RuntimeStore::commit_schema_validation_with_audit
+RuntimeStore::schema_validation_count
+RuntimeKernel::validate_schema evidence persistence
+```
+
+The vertical slice now starts the real Rust worker, initializes RuntimeKernel
+and SQLite, calls the TypeScript tools/call adapter, gates Reasonix invocation
+through `runtime.evaluate_operation`, runs a mock Reasonix executable, validates
+the output through `runtime.validate_schema`, and returns MCP-style
+`structuredContent` only for trusted valid output.
+
+- [x] **Step 4: Verify M8 tests pass**
+
+Run:
+
+```text
+bun test packages/reasonix-expert-mcp/src/reasonix/vertical-slice.test.ts
+cargo test -p coasonix-runtime-core --test runtime_kernel validate_schema_routes_through_kernel_registry -- --nocapture
+```
+
+Expected: all M8 vertical-slice and schema-evidence tests pass.
+
+- [x] **Step 5: Review M8 against blueprint**
+
+Review checks:
+
+```text
+mock Reasonix is a real process invoked only after Rust allow
+mock reads stdin and writes controlled stdout/stderr
+success path returns schema-valid review_result_v1 as structuredContent
+timeout, malformed JSON, multiple JSON objects, nonzero exit, and stderr-only failure return isError true
+schema mismatch, wrong task_id, wrong request_id, and invalid confidence do not become structuredContent
+runtime deny prevents mock Reasonix invocation
+worker unavailable remains covered by M7 and no side effect is executed
+stderr is diagnostic metadata, not structuredContent
+runtime.validate_schema persists schema validation evidence with an audit event
+no real Reasonix credentials, network exceptions, patch apply, or post-v1 tools were added
+```
+
+- [x] **Step 6: Fix review findings**
+
+Local review found and fixed:
+
+```text
+RuntimeKernel::validate_schema initially returned validation results without
+persistent evidence. The kernel now records schema_validation_results with an
+audit event, and runtime_kernel tests assert the evidence row exists.
+
+ReasonixProcessRunner initially left its timeout timer armed after normal
+process exit. The timer is now cleared after the race completes.
+```
+
+- [x] **Step 7: Run full verification and update implementation docs**
+
+Fresh verification after review fixes:
+
+```text
+cargo test --workspace
+  all Rust workspace tests passed, including RuntimeKernel schema validation
+  evidence and 11 json_rpc_worker tests
+
+bun test
+  packages/reasonix-expert-mcp/src/index.test.ts passed
+  packages/reasonix-expert-mcp/src/worker/client.test.ts passed
+  packages/reasonix-expert-mcp/src/mcp/tools.test.ts passed
+  packages/reasonix-expert-mcp/src/reasonix/vertical-slice.test.ts passed
+
+python -m json.tool schemas/coasonix-v1.schema.json > $null
+  exited 0
+
+cargo fmt --all -- --check
+  exited 0
+```
+
+## Full v1 MVP Status
+
+M0 through M8 are now complete. The implementation stops at the blueprint's v1
+MVP boundary and keeps explicit non-goals out of scope: no real Reasonix
+credentials, post-v1 tools, patch application, network allow exceptions, remote
+HTTP transport, or local daemon.
 
 Each milestone requires failing tests first, passing tests after implementation,
 review, fixes, and documentation updates before continuing.

@@ -1,4 +1,5 @@
 import { RuntimeWorkerError } from "../worker/client";
+import { extractSingleJsonObject } from "../reasonix/output-normalizer";
 
 const REVIEW_DIFF_TOOL_NAME = "reasonix.review_diff";
 const REVIEW_DIFF_INPUT_REF =
@@ -57,6 +58,7 @@ export interface ReasonixRunResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  timedOut?: boolean;
 }
 
 export function listTools() {
@@ -118,18 +120,39 @@ export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions)
         );
       }
 
-      const run = await options.reasonix.runReviewDiff(input.value);
+      let run: ReasonixRunResult;
+      try {
+        run = await options.reasonix.runReviewDiff(input.value);
+      } catch (error) {
+        return errorToolResult("reasonix_failed", error instanceof Error ? error.message : "Reasonix failed");
+      }
+      if (run.timedOut) {
+        return errorToolResult("timeout", "Reasonix invocation timed out", {
+          diagnostics: { stderr: run.stderr },
+        });
+      }
       if (run.exitCode !== 0) {
         return errorToolResult("reasonix_failed", `Reasonix exited with ${run.exitCode}`, {
           diagnostics: { stderr: run.stderr },
         });
       }
 
-      const parsed = parseSingleJsonObject(run.stdout);
+      const parsed = extractSingleJsonObject(run.stdout);
       if (!parsed.ok) {
         return errorToolResult("reasonix_failed", parsed.error, {
           diagnostics: { stderr: run.stderr },
         });
+      }
+
+      if (
+        parsed.value.task_id !== input.value.task_id ||
+        parsed.value.request_id !== input.value.request_id
+      ) {
+        return errorToolResult(
+          "schema_validation_failed",
+          "Reasonix output task_id/request_id did not match request",
+          { diagnostics: { stderr: run.stderr } },
+        );
       }
 
       const validation = asSchemaValidation(
@@ -255,23 +278,6 @@ function asSchemaValidation(value: unknown): SchemaValidationPayload {
     throw RuntimeWorkerError.unavailable("runtime.validate_schema returned invalid payload");
   }
   return value as SchemaValidationPayload;
-}
-
-type ParseResult =
-  | { ok: true; value: Record<string, unknown> }
-  | { ok: false; error: string };
-
-function parseSingleJsonObject(stdout: string): ParseResult {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stdout.trim());
-  } catch {
-    return { ok: false, error: "Reasonix stdout did not contain a single JSON object" };
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "Reasonix stdout JSON was not an object" };
-  }
-  return { ok: true, value: parsed as Record<string, unknown> };
 }
 
 function runtimeUnavailableResult(error: unknown): ToolResult {

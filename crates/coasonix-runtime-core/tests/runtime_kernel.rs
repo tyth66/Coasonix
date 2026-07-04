@@ -226,7 +226,7 @@ fn decision_merge_precedence_matches_blueprint() {
 #[test]
 fn validate_schema_routes_through_kernel_registry() {
     let repo = temp_repo("schema");
-    let kernel = RuntimeKernel::initialize(config(repo)).expect("initialize kernel");
+    let kernel = RuntimeKernel::initialize(config(repo.clone())).expect("initialize kernel");
 
     let validation = kernel.validate_schema(SchemaValidationRequest {
         task_id: "TASK-schema".to_string(),
@@ -244,4 +244,12 @@ fn validate_schema_routes_through_kernel_registry() {
     });
 
     assert!(validation.valid, "schema errors: {:?}", validation.errors);
+
+    let store = RuntimeStore::initialize(repo).expect("reopen store");
+    assert_eq!(
+        store
+            .schema_validation_count("TASK-schema", "REQ-schema")
+            .expect("schema validation evidence count"),
+        1
+    );
 }

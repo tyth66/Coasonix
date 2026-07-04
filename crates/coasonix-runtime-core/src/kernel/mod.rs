@@ -8,6 +8,7 @@ use crate::{
     policy::{CommandInvocation, PermissionLevel, PolicyEngine, RuntimeOperationRequest},
     schema::{SchemaRegistry, SchemaValidationResult},
     state::{TaskState, TaskStateValue},
+    storage::SchemaValidationRecord,
     storage::{AuditEventInput, AuditEventRecord, RuntimeDecisionRecord, RuntimeStore, StoreError},
 };
 
@@ -100,8 +101,11 @@ impl RuntimeKernel {
     }
 
     pub fn validate_schema(&self, request: SchemaValidationRequest) -> SchemaValidationResult {
-        self.schema_registry
-            .validate(&request.expected_schema, &request.payload)
+        let result = self
+            .schema_registry
+            .validate(&request.expected_schema, &request.payload);
+        self.persist_schema_validation(&request, &result);
+        result
     }
 
     pub fn evaluate_operation(&mut self, request: RuntimeOperationRequest) -> RuntimeDecision {
@@ -250,6 +254,49 @@ impl RuntimeKernel {
         };
         self.store
             .commit_runtime_decision_with_audit(&record, &audit)
+    }
+
+    fn persist_schema_validation(
+        &self,
+        request: &SchemaValidationRequest,
+        result: &SchemaValidationResult,
+    ) {
+        let payload = result
+            .to_payload(&request.task_id, request.request_id.as_deref())
+            .to_string();
+        let errors_json = Value::Array(
+            result
+                .errors
+                .iter()
+                .map(|error| {
+                    json!({
+                        "path": error.path,
+                        "message": error.message
+                    })
+                })
+                .collect(),
+        )
+        .to_string();
+        let record = SchemaValidationRecord {
+            task_id: request.task_id.clone(),
+            request_id: request.request_id.clone(),
+            expected_schema: request.expected_schema.clone(),
+            valid: result.valid,
+            errors_json,
+        };
+        let audit = AuditEventInput {
+            task_id: request.task_id.clone(),
+            event_type: if result.valid {
+                "schema_validation_passed".to_string()
+            } else {
+                "schema_validation_failed".to_string()
+            },
+            summary: format!("Schema validation for {}", request.expected_schema),
+            payload_json: payload,
+        };
+        let _ = self
+            .store
+            .commit_schema_validation_with_audit(&record, &audit);
     }
 
     fn persist_running_state(&self, task_id: &str, current_state: TaskState) {

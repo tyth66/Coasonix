@@ -42,6 +42,15 @@ pub struct RuntimeDecisionRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SchemaValidationRecord {
+    pub task_id: String,
+    pub request_id: Option<String>,
+    pub expected_schema: String,
+    pub valid: bool,
+    pub errors_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheMetadata {
     pub cache_key: String,
     pub payload_hash: String,
@@ -214,6 +223,57 @@ impl RuntimeStore {
             id: audit_id,
             task_sequence: next_sequence,
         })
+    }
+
+    pub fn commit_schema_validation_with_audit(
+        &self,
+        validation: &SchemaValidationRecord,
+        audit: &AuditEventInput,
+    ) -> Result<AuditEventRecord, StoreError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let next_sequence = next_task_sequence(&transaction, &audit.task_id)?;
+        transaction.execute(
+            "INSERT INTO audit_events (task_id, task_sequence, event_type, summary, payload_json)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                audit.task_id,
+                next_sequence,
+                audit.event_type,
+                audit.summary,
+                audit.payload_json
+            ],
+        )?;
+        let audit_id = transaction.last_insert_rowid();
+        transaction.execute(
+            "INSERT INTO schema_validation_results
+             (task_id, request_id, expected_schema, valid, errors_json)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                validation.task_id,
+                validation.request_id,
+                validation.expected_schema,
+                i64::from(validation.valid),
+                validation.errors_json
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(AuditEventRecord {
+            id: audit_id,
+            task_sequence: next_sequence,
+        })
+    }
+
+    pub fn schema_validation_count(
+        &self,
+        task_id: &str,
+        request_id: &str,
+    ) -> Result<i64, StoreError> {
+        Ok(self.connection.query_row(
+            "SELECT COUNT(*) FROM schema_validation_results
+             WHERE task_id = ?1 AND request_id = ?2",
+            params![task_id, request_id],
+            |row| row.get(0),
+        )?)
     }
 
     pub fn runtime_decision_audit_event_id(
