@@ -16,7 +16,7 @@ impl TaskStateValue {
 pub struct TaskState {
     task_id: String,
     value: TaskStateValue,
-    reasonix_calls: u32,
+    agent_calls: u32,
     required_verification_gaps: Vec<String>,
 }
 
@@ -32,16 +32,16 @@ impl TaskState {
         Self {
             task_id: task_id.into(),
             value: TaskStateValue::Created,
-            reasonix_calls: 0,
+            agent_calls: 0,
             required_verification_gaps: Vec::new(),
         }
     }
 
-    pub fn restore(task_id: impl Into<String>, value: TaskStateValue, reasonix_calls: u32) -> Self {
+    pub fn restore(task_id: impl Into<String>, value: TaskStateValue, agent_calls: u32) -> Self {
         Self {
             task_id: task_id.into(),
             value,
-            reasonix_calls,
+            agent_calls,
             required_verification_gaps: Vec::new(),
         }
     }
@@ -54,8 +54,8 @@ impl TaskState {
         self.value
     }
 
-    pub fn reasonix_calls(&self) -> u32 {
-        self.reasonix_calls
+    pub fn agent_calls(&self) -> u32 {
+        self.agent_calls
     }
 
     pub fn add_required_verification_gap(&mut self, gap: impl Into<String>) {
@@ -79,10 +79,10 @@ impl TaskState {
         Ok(())
     }
 
-    pub fn note_adapter_observed_reasonix_attempt(&mut self) {}
+    pub fn note_adapter_observed_agent_attempt(&mut self) {}
 
-    pub fn note_runtime_owned_reasonix_call(&mut self) {
-        self.reasonix_calls += 1;
+    pub fn note_runtime_owned_agent_call(&mut self) {
+        self.agent_calls += 1;
     }
 }
 
@@ -94,3 +94,4 @@ fn is_legal_transition(current: TaskStateValue, next: TaskStateValue) -> bool {
             | (TaskStateValue::Running, TaskStateValue::Failed)
     )
 }
+

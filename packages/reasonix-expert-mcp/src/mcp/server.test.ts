@@ -55,7 +55,7 @@ describe("reasonix-expert MCP stdio server", () => {
     const server = startServer({
       COASONIX_REPO_ROOT: fixture.repo,
       COASONIX_RUNTIME_WORKER: workerPath,
-      COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
+      COASONIX_AGENT_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
     });
 
     const initialize = await server.request("initialize", {
@@ -100,7 +100,7 @@ describe("reasonix-expert MCP stdio server", () => {
         ...process.env,
         COASONIX_REPO_ROOT: fixture.repo,
         COASONIX_RUNTIME_WORKER: workerPath,
-        COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
+        COASONIX_AGENT_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
       },
     });
     const client = new Client({ name: "coasonix-sdk-test", version: "0.0.0" });
@@ -135,7 +135,7 @@ describe("reasonix-expert MCP stdio server", () => {
     const server = startServer({
       COASONIX_REPO_ROOT: fixture.repo,
       COASONIX_RUNTIME_WORKER: workerPath,
-      COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
+      COASONIX_AGENT_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
     });
 
     await server.request("initialize", {
@@ -167,7 +167,7 @@ describe("reasonix-expert MCP stdio server", () => {
         ...process.env,
         COASONIX_REPO_ROOT: fixture.repo,
         COASONIX_RUNTIME_WORKER: workerPath,
-        COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
+        COASONIX_AGENT_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
       },
       stdin: "pipe",
       stdout: "pipe",
@@ -194,7 +194,7 @@ describe("reasonix-expert MCP stdio server", () => {
         ...process.env,
         COASONIX_REPO_ROOT: fixture.repo,
         COASONIX_RUNTIME_WORKER: workerPath,
-        COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([processExec()]),
+        COASONIX_AGENT_COMMAND_JSON: JSON.stringify([processExec()]),
       },
       stdin: "pipe",
       stdout: "pipe",
@@ -367,3 +367,5 @@ function writeMockReasonix(mode: string, markerPath?: string): string {
   writeFileSync(command, `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`);
   return command;
 }
+
+

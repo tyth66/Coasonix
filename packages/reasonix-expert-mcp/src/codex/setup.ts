@@ -64,9 +64,9 @@ export function buildCodexMcpAddCommand(options: SetupOptions): CommandInvocatio
       "--env",
       `COASONIX_RUNTIME_WORKER=${runtimeWorker}`,
       "--env",
-      `COASONIX_REASONIX_COMMAND_JSON=${JSON.stringify(backend.command)}`,
+      `COASONIX_AGENT_COMMAND_JSON=${JSON.stringify(backend.command)}`,
       "--env",
-      `COASONIX_REASONIX_TIMEOUT_MS=${backend.timeoutMs}`,
+      `COASONIX_AGENT_TIMEOUT_MS=${backend.timeoutMs}`,
       "--",
       options.bunCommand ?? process.execPath,
       "run",
@@ -214,3 +214,4 @@ Example:
       process.exit(1);
     });
 }
+

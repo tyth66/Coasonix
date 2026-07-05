@@ -1,4 +1,4 @@
-import type { ReasonixRunResult } from "./types";
+import type { AgentRunResult } from "./types";
 
 interface ProcessInput {
   goal?: string;
@@ -7,21 +7,21 @@ interface ProcessInput {
   [key: string]: unknown;
 }
 
-export interface ReasonixProcessRunnerOptions {
+export interface AgentProcessRunnerOptions {
   command: string[];
   timeoutMs: number;
 }
 
-export class ReasonixProcessRunner {
+export class AgentProcessRunner {
   private readonly command: string[];
   private readonly timeoutMs: number;
 
-  constructor(options: ReasonixProcessRunnerOptions) {
+  constructor(options: AgentProcessRunnerOptions) {
     this.command = options.command;
     this.timeoutMs = options.timeoutMs;
   }
 
-  async runReviewDiff(input: ProcessInput): Promise<ReasonixRunResult> {
+  async runReviewDiff(input: ProcessInput): Promise<AgentRunResult> {
     const process = Bun.spawn(this.command, {
       stdin: "pipe",
       stdout: "pipe",
@@ -59,3 +59,4 @@ export class ReasonixProcessRunner {
     };
   }
 }
+

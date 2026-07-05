@@ -29,7 +29,7 @@ export interface HealthOptions {
   bunCommand?: string;
   profile?: BackendProfile;
   runtimeWorker?: string;
-  reasonixCommand?: string[];
+  agentCommand?: string[];
   buildRuntimeWorker?: boolean;
   skipGatewaySmoke?: boolean;
   run?: (command: string, args: string[], options?: { cwd?: string }) => Promise<CommandResult>;
@@ -187,8 +187,8 @@ function buildServerLaunch(options: HealthOptions, runtimeWorker: string): Serve
 
   const env = parseEnvArgs(invocation.args.slice(0, separator));
   env.COASONIX_RUNTIME_WORKER = runtimeWorker;
-  if (options.reasonixCommand) {
-    env.COASONIX_REASONIX_COMMAND_JSON = JSON.stringify(options.reasonixCommand);
+  if (options.agentCommand) {
+    env.COASONIX_AGENT_COMMAND_JSON = JSON.stringify(options.agentCommand);
   }
 
   return {
@@ -464,3 +464,4 @@ Example:
       process.exit(1);
     });
 }
+

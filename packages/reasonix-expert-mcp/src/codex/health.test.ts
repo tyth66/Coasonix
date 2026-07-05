@@ -82,7 +82,7 @@ describe("Codex MCP healthcheck", () => {
       targetRepo: createFixtureRepo("backend-failure"),
       codexCommand: "codex",
       bunCommand: process.execPath,
-      reasonixCommand: failingBackendCommand(),
+      agentCommand: failingBackendCommand(),
       run: codexRegistered,
     });
 
@@ -237,3 +237,5 @@ exit 2
   );
   return command;
 }
+
+

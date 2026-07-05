@@ -7,7 +7,7 @@ describe("loadServerConfig", () => {
     const config = loadServerConfig({
       COASONIX_REPO_ROOT: "D:\\work\\target-repo",
       COASONIX_RUNTIME_WORKER: "D:\\Coasonix\\target\\debug\\coasonix-runtime-worker.exe",
-      COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([
+      COASONIX_AGENT_COMMAND_JSON: JSON.stringify([
         "D:\\Coasonix\\bin\\coasonix-mock-worker.cmd",
         "review-diff",
       ]),
@@ -15,6 +15,8 @@ describe("loadServerConfig", () => {
 
     expect(config.repoRoot).toContain("target-repo");
     expect(config.runtimeWorker).toContain("coasonix-runtime-worker");
-    expect(config.reasonixCommand[1]).toBe("review-diff");
+    expect(config.agentCommand[1]).toBe("review-diff");
   });
 });
+
+

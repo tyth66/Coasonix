@@ -5,7 +5,7 @@ import {
   RUNTIME_REVIEW_DIFF_OPERATION,
 } from "../../agent/naming";
 
-import type { ReasonixRunResult, ReasonixRunner } from "../../reasonix/types";
+import type { AgentRunResult, AgentRunner } from "../../agents/types";
 import type { ToolHandler } from "../types";
 
 
@@ -125,7 +125,7 @@ export const reviewDiffHandler: ToolHandler = {
     };
   },
 
-  buildRuntimeRequest(input: ReviewDiffInput, reasonixCommand = ["reasonix", "review-diff"]) {
+  buildRuntimeRequest(input: ReviewDiffInput, agentCommand = ["reasonix", "review-diff"]) {
     return {
       task_id: input.task_id,
       request_id: input.request_id,
@@ -140,12 +140,12 @@ export const reviewDiffHandler: ToolHandler = {
         ].filter((p): p is string => Boolean(p)),
         write_paths: [`.agent/results/${input.request_id}.json`],
         network: false,
-        command: reasonixCommand,
+        command: agentCommand,
       },
     };
   },
 
-  async invokeReasonix(runner: ReasonixRunner, input: ReviewDiffInput): Promise<ReasonixRunResult> {
+  async invokeAgent(runner: AgentRunner, input: ReviewDiffInput): Promise<AgentRunResult> {
     return runner.runReviewDiff(input);
   },
 
@@ -168,5 +168,6 @@ export const reviewDiffHandler: ToolHandler = {
     return null;
   },
 };
+
 
 

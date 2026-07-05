@@ -23,7 +23,7 @@ describe("backend profiles", () => {
   });
 
   test.each([
-    ["reasonix-cli", "COASONIX_REASONIX_CLI_COMMAND_JSON"],
+    ["reasonix-cli", "COASONIX_AGENT_CLI_COMMAND_JSON"],
     ["mimocode-cli", "COASONIX_MIMOCODE_CLI_COMMAND_JSON"],
   ] satisfies Array<[BackendProfile, keyof BackendProfileEnvironment]>)(
     "%s requires explicit command JSON",
@@ -37,8 +37,8 @@ describe("backend profiles", () => {
       profile: "reasonix-cli",
       repoRoot,
       env: {
-        COASONIX_REASONIX_CLI_COMMAND_JSON: '["reasonix-cli","review-diff"]',
-        COASONIX_REASONIX_TIMEOUT_MS: "15000",
+        COASONIX_AGENT_CLI_COMMAND_JSON: '["reasonix-cli","review-diff"]',
+        COASONIX_AGENT_TIMEOUT_MS: "15000",
       },
     });
 
@@ -52,7 +52,7 @@ describe("backend profiles", () => {
       repoRoot,
       env: {
         COASONIX_MIMOCODE_CLI_COMMAND_JSON: '["mimocode-cli","review-diff"]',
-        COASONIX_REASONIX_TIMEOUT_MS: "15000",
+        COASONIX_AGENT_TIMEOUT_MS: "15000",
         COASONIX_MIMOCODE_TIMEOUT_MS: "20000",
       },
     });
@@ -61,3 +61,4 @@ describe("backend profiles", () => {
     expect(resolved.timeoutMs).toBe(20_000);
   });
 });
+

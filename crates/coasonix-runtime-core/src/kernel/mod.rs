@@ -15,7 +15,7 @@ pub use crate::policy::RuntimeDecisionValue;
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     pub repo_root: PathBuf,
-    pub reasonix_executable: String,
+    pub agent_executable: String,
 }
 
 #[derive(Debug)]
@@ -75,7 +75,7 @@ impl RuntimeKernel {
             ])
             .allow_write([".agent/results/**", ".agent/logs/**"])
             .deny([".agent/secrets/**", ".git/**"]);
-        let policy_engine = PolicyEngine::review_diff(config.reasonix_executable, artifact_policy);
+        let policy_engine = PolicyEngine::review_diff(config.agent_executable, artifact_policy);
 
         Ok(Self {
             store,
@@ -216,7 +216,7 @@ impl RuntimeKernel {
             let _ = self.store.upsert_task_state(&TaskState::restore(
                 task_id,
                 current_state.value(),
-                current_state.reasonix_calls(),
+                current_state.agent_calls(),
             ));
         }
     }
@@ -258,3 +258,4 @@ fn runtime_decision_to_str(value: RuntimeDecisionValue) -> &'static str {
         RuntimeDecisionValue::FatalError => "fatal_error",
     }
 }
+

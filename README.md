@@ -82,7 +82,7 @@ Run the local MCP stdio server directly:
 ```powershell
 $env:COASONIX_REPO_ROOT = "D:\path\to\repo"
 $env:COASONIX_RUNTIME_WORKER = "D:\Coasonix\target\debug\coasonix-runtime-worker.exe"
-$env:COASONIX_REASONIX_COMMAND_JSON = '["reasonix","review-diff"]'
+$env:COASONIX_AGENT_COMMAND_JSON = '["reasonix","review-diff"]'
 bun run --silent --cwd=packages/reasonix-expert-mcp start:mcp
 ```
 
@@ -95,5 +95,6 @@ python -m json.tool schemas/coasonix-v1.schema.json > $null
 cargo fmt --all -- --check
 git diff --check
 ```
+
 
 

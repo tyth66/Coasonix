@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
 import { loadServerConfig, type ServerConfig } from "../config";
-import { ReasonixProcessRunner } from "../reasonix/runner";
+import { AgentProcessRunner } from "../agents/process-runner";
 import { RuntimeWorkerClient } from "../worker/client";
 import { createReasonixToolsAdapter } from "./adapter";
 
@@ -72,7 +72,7 @@ async function startMcpServer(
   try {
     await runtime.call("runtime.initialize", {
       repo_root: config.repoRoot,
-      reasonix_executable: config.reasonixCommand[0],
+      agent_executable: config.agentCommand[0],
     });
   } catch (error) {
     await shutdown();
@@ -82,10 +82,10 @@ async function startMcpServer(
   const adapter = createReasonixToolsAdapter({
     initialized: true,
     runtime,
-    reasonixCommand: config.reasonixCommand,
-    reasonix: new ReasonixProcessRunner({
-      command: config.reasonixCommand,
-      timeoutMs: config.reasonixTimeoutMs,
+    agentCommand: config.agentCommand,
+    reasonix: new AgentProcessRunner({
+      command: config.agentCommand,
+      timeoutMs: config.agentTimeoutMs,
     }),
   });
 
@@ -183,3 +183,4 @@ function errorResponse(id: string | number | null, code: number, message: string
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+

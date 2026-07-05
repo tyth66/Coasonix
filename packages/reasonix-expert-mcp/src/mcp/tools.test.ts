@@ -66,7 +66,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-call-order", "REQ-call-order");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff(input) {
           events.push("reasonix");
           return {
@@ -101,7 +101,7 @@ describe("tools/call reasonix.review_diff", () => {
           };
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           invoked = true;
           throw new Error("must not run");
@@ -132,7 +132,7 @@ describe("tools/call reasonix.review_diff", () => {
           throw RuntimeWorkerError.unavailable("worker unavailable");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           invoked = true;
           throw new Error("must not run");
@@ -161,7 +161,7 @@ describe("tools/call reasonix.review_diff", () => {
           throw RuntimeWorkerError.unavailable("runtime worker exited with code 42");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           throw new Error("must not run");
         },
@@ -190,7 +190,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-valid", "REQ-valid");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff(input) {
           return {
             stdout: JSON.stringify(reviewResult(input.task_id, input.request_id)),
@@ -225,7 +225,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-malformed", "REQ-malformed");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           return { stdout: "not-json", stderr: "", exitCode: 0 };
         },
@@ -254,7 +254,7 @@ describe("tools/call reasonix.review_diff", () => {
           throw new Error("must not call runtime");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           touchedReasonix = true;
           throw new Error("must not run Reasonix");
@@ -283,7 +283,7 @@ describe("tools/call reasonix.review_diff", () => {
           throw new Error("must not call runtime");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           throw new Error("must not run Reasonix");
         },
@@ -309,7 +309,7 @@ describe("tools/call reasonix.review_diff", () => {
           throw new Error("must not call runtime");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           throw new Error("must not run Reasonix");
         },
@@ -341,7 +341,7 @@ describe("tools/call reasonix.review_diff", () => {
           };
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           invoked = true;
           throw new Error("must not run");
@@ -373,7 +373,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-timeout", "REQ-timeout");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           return { stdout: "", stderr: "killed", exitCode: -1, timedOut: true };
         },
@@ -403,7 +403,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-exit", "REQ-exit");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           return { stdout: "", stderr: "crash", exitCode: 7 };
         },
@@ -433,7 +433,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-empty", "REQ-empty");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           return { stdout: "", stderr: "", exitCode: 0 };
         },
@@ -462,7 +462,7 @@ describe("tools/call reasonix.review_diff", () => {
           return validSchema("TASK-id", "REQ-id");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff() {
           return {
             stdout: JSON.stringify(reviewResult("TASK-wrong", "REQ-wrong")),
@@ -495,7 +495,7 @@ describe("tools/call reasonix.review_diff", () => {
           throw new Error("runtime schema validation must not be called");
         },
       },
-      reasonix: {
+      agent: {
         async runReviewDiff(input) {
           return {
             stdout: JSON.stringify({
@@ -572,3 +572,5 @@ function reviewResult(taskId: string, requestId: string) {
     confidence: 0.9,
   };
 }
+
+

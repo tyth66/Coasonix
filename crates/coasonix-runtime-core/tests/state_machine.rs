@@ -47,12 +47,13 @@ fn completion_is_blocked_while_required_gaps_exist() {
 }
 
 #[test]
-fn reasonix_call_count_only_increments_through_runtime_decision() {
+fn agent_call_count_only_increments_through_runtime_decision() {
     let mut state = TaskState::new("TASK-state");
 
-    state.note_adapter_observed_reasonix_attempt();
-    assert_eq!(state.reasonix_calls(), 0);
+    state.note_adapter_observed_agent_attempt();
+    assert_eq!(state.agent_calls(), 0);
 
-    state.note_runtime_owned_reasonix_call();
-    assert_eq!(state.reasonix_calls(), 1);
+    state.note_runtime_owned_agent_call();
+    assert_eq!(state.agent_calls(), 1);
 }
+

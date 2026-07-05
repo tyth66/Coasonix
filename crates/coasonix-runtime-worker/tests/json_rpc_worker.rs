@@ -91,7 +91,7 @@ fn initialize(worker: &mut WorkerProcess, repo: &PathBuf) -> Value {
         "method": "runtime.initialize",
         "params": {
             "repo_root": repo,
-            "reasonix_executable": "reasonix"
+            "agent_executable": "reasonix"
         }
     }))
 }
@@ -168,7 +168,7 @@ fn invalid_params_are_rejected() {
         "method": "runtime.initialize",
         "params": {
             "repo_root": 42,
-            "reasonix_executable": "reasonix"
+            "agent_executable": "reasonix"
         }
     }));
 
@@ -293,3 +293,4 @@ fn worker_shutdown_is_explicit() {
     assert_eq!(response["result"]["shutdown"], true);
     assert!(status.success(), "worker should exit successfully");
 }
+

@@ -25,7 +25,7 @@ fn temp_repo(name: &str) -> PathBuf {
 fn config(repo_root: PathBuf) -> RuntimeConfig {
     RuntimeConfig {
         repo_root,
-        reasonix_executable: "reasonix".to_string(),
+        agent_executable: "agent".to_string(),
     }
 }
 
@@ -40,7 +40,7 @@ fn allowed_request(task_id: &str, request_id: &str) -> RuntimeOperationRequest {
             write_paths: vec![".agent/results/review.json".to_string()],
             network: false,
             command: Some(CommandInvocation::Argv(vec![
-                "reasonix".to_string(),
+                "agent".to_string(),
                 "review-diff".to_string(),
             ])),
         },
@@ -102,7 +102,7 @@ fn unknown_operation_is_denied_by_policy_gate() {
     let repo = temp_repo("unknown-operation");
     let mut kernel = RuntimeKernel::initialize(config(repo)).expect("initialize kernel");
     let mut request = allowed_request("TASK-unknown-operation", "REQ-unknown-operation");
-    request.operation = "reasonix.unknown".to_string();
+    request.operation = "agent.unknown".to_string();
 
     let decision = kernel.evaluate_operation(request);
 
@@ -204,3 +204,5 @@ fn decision_merge_precedence_matches_blueprint() {
         RuntimeDecisionValue::Deny
     );
 }
+
+

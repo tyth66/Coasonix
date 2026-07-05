@@ -159,3 +159,4 @@ function validOutput() {
     confidence: 0.9,
   };
 }
+

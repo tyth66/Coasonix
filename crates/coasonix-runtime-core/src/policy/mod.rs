@@ -55,7 +55,7 @@ pub struct PolicyEvaluationResult {
 struct RegisteredOperation {
     operation: String,
     required_permission: PermissionLevel,
-    reasonix_executable: String,
+    agent_executable: String,
     subcommand: String,
 }
 
@@ -77,7 +77,7 @@ impl PolicyEngine {
         mut self,
         operation: impl Into<String>,
         required_permission: PermissionLevel,
-        reasonix_executable: impl Into<String>,
+        agent_executable: impl Into<String>,
         subcommand: impl Into<String>,
     ) -> Self {
         let op = operation.into();
@@ -86,7 +86,7 @@ impl PolicyEngine {
             RegisteredOperation {
                 operation: op,
                 required_permission,
-                reasonix_executable: reasonix_executable.into(),
+                agent_executable: agent_executable.into(),
                 subcommand: subcommand.into(),
             },
         );
@@ -94,13 +94,13 @@ impl PolicyEngine {
     }
 
     pub fn review_diff(
-        reasonix_executable: impl Into<String>,
+        agent_executable: impl Into<String>,
         artifact_policy: ArtifactPolicy,
     ) -> Self {
         Self::new(artifact_policy).register_operation(
             "reasonix.review_diff",
             PermissionLevel::L1DiffReview,
-            reasonix_executable,
+            agent_executable,
             "review-diff",
         )
     }
@@ -145,9 +145,9 @@ impl PolicyEngine {
             Some(CommandInvocation::Argv(argv)) => {
                 if argv.is_empty() {
                     reasons.push("argv command is empty".to_string());
-                } else if argv[0] != registered.reasonix_executable {
+                } else if argv[0] != registered.agent_executable {
                     reasons.push(
-                        "argv[0] does not match configured Reasonix executable".to_string(),
+                        "argv[0] does not match configured agent executable".to_string(),
                     );
                 } else if argv.len() != 2 || argv.get(1).map(String::as_str) != Some(&registered.subcommand) {
                     reasons.push(format!(
@@ -212,3 +212,4 @@ fn command_hash(argv: &[String]) -> String {
     }
     format!("sha256:{:x}", hasher.finalize())
 }
+

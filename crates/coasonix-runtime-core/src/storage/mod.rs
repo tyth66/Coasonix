@@ -313,15 +313,15 @@ impl RuntimeStore {
             params![state.task_id()],
         )?;
         self.connection.execute(
-            "INSERT INTO task_state (task_id, state, reasonix_calls)
+            "INSERT INTO task_state (task_id, state, agent_calls)
              VALUES (?1, ?2, ?3)
              ON CONFLICT(task_id) DO UPDATE SET
                 state = excluded.state,
-                reasonix_calls = excluded.reasonix_calls",
+                agent_calls = excluded.agent_calls",
             params![
                 state.task_id(),
                 task_state_to_str(state.value()),
-                state.reasonix_calls() as i64
+                state.agent_calls() as i64
             ],
         )?;
         Ok(())
@@ -331,7 +331,7 @@ impl RuntimeStore {
         let row = self
             .connection
             .query_row(
-                "SELECT state, reasonix_calls FROM task_state WHERE task_id = ?1",
+                "SELECT state, agent_calls FROM task_state WHERE task_id = ?1",
                 params![task_id],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
@@ -595,7 +595,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "CREATE TABLE IF NOT EXISTS task_state (
             task_id TEXT PRIMARY KEY REFERENCES tasks(task_id) ON DELETE RESTRICT,
             state TEXT NOT NULL,
-            reasonix_calls INTEGER NOT NULL DEFAULT 0
+            agent_calls INTEGER NOT NULL DEFAULT 0
         );",
     ),
     (
@@ -659,3 +659,4 @@ const MIGRATIONS: &[(&str, &str)] = &[
         );",
     ),
 ];
+

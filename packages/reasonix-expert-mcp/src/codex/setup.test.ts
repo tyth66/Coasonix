@@ -34,9 +34,9 @@ describe("Codex MCP setup", () => {
     expect(command.args).toContain(
       `COASONIX_RUNTIME_WORKER=${resolve(repoRoot, "target/debug", runtimeWorkerName)}`,
     );
-    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_REASONIX_COMMAND_JSON="));
+    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_AGENT_COMMAND_JSON="));
     expect(workerEnv).toContain(mockWorkerName);
-    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_REASONIX_COMMAND_JSON=", ""));
+    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_AGENT_COMMAND_JSON=", ""));
     expect(workerArgv[1]).toBe("review-diff");
     expect(existsSync(workerArgv[0])).toBe(true);
     expect(command.args.join(" ")).not.toContain("Temp");
@@ -51,11 +51,11 @@ describe("Codex MCP setup", () => {
       profile: "conformance",
     });
 
-    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_REASONIX_COMMAND_JSON="));
-    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_REASONIX_COMMAND_JSON=", ""));
+    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_AGENT_COMMAND_JSON="));
+    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_AGENT_COMMAND_JSON=", ""));
     expect(workerArgv[0]).toContain(mockWorkerName);
     expect(workerArgv[1]).toBe("review-diff");
-    expect(command.args).toContain("COASONIX_REASONIX_TIMEOUT_MS=10000");
+    expect(command.args).toContain("COASONIX_AGENT_TIMEOUT_MS=10000");
   });
 
   test("reasonix-cli profile requires explicit backend command JSON", () => {
@@ -78,15 +78,15 @@ describe("Codex MCP setup", () => {
       codexCommand: "codex",
       bunCommand: "bun",
       profile: "reasonix-cli",
-      env: { COASONIX_REASONIX_CLI_COMMAND_JSON: '["reasonix-cli","review-diff"]' },
+      env: { COASONIX_AGENT_CLI_COMMAND_JSON: '["reasonix-cli","review-diff"]' },
     });
 
-    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_REASONIX_COMMAND_JSON="));
-    expect(JSON.parse(workerEnv!.replace("COASONIX_REASONIX_COMMAND_JSON=", ""))).toEqual([
+    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_AGENT_COMMAND_JSON="));
+    expect(JSON.parse(workerEnv!.replace("COASONIX_AGENT_COMMAND_JSON=", ""))).toEqual([
       "reasonix-cli",
       "review-diff",
     ]);
-    expect(command.args).toContain("COASONIX_REASONIX_TIMEOUT_MS=10000");
+    expect(command.args).toContain("COASONIX_AGENT_TIMEOUT_MS=10000");
     expect(command.args).toContain("start:mcp");
     expect(command.args).toContain("--silent");
   });
@@ -186,8 +186,8 @@ describe("Codex MCP setup", () => {
       bunCommand: "bun",
       profile: "mock",
     });
-    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_REASONIX_COMMAND_JSON="));
-    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_REASONIX_COMMAND_JSON=", ""));
+    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_AGENT_COMMAND_JSON="));
+    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_AGENT_COMMAND_JSON=", ""));
     const worker = Bun.spawn(workerArgv, {
       stdin: "pipe",
       stdout: "pipe",
@@ -239,3 +239,5 @@ describe("Codex MCP setup", () => {
     expect(stdout).toContain("--profile");
   });
 });
+
+

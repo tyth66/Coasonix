@@ -1,4 +1,4 @@
-import type { ReasonixRunResult, ReasonixRunner } from "../reasonix/types";
+import type { AgentRunResult, AgentRunner } from "../agents/types";
 
 // ── MCP-facing types ──
 
@@ -25,8 +25,8 @@ export interface ToolHandler {
   readonly description: string;
   readonly inputSchema: object;
   normalizeInput(value: unknown, nextTaskId: () => string, nextRequestId: () => string): { ok: true; value: unknown } | { ok: false; error: string };
-  buildRuntimeRequest(input: unknown, reasonixCommand?: string[]): Record<string, unknown>;
-  invokeReasonix(runner: ReasonixRunner, input: unknown): Promise<ReasonixRunResult>;
+  buildRuntimeRequest(input: unknown, agentCommand?: string[]): Record<string, unknown>;
+  invokeAgent(runner: AgentRunner, input: unknown): Promise<AgentRunResult>;
   validateOutput(value: Record<string, unknown>): { path: string; message: string } | null;
 }
 
@@ -34,7 +34,7 @@ export interface ToolHandler {
 
 export interface ReasonixToolsAdapterOptions {
   runtime: RuntimeClient;
-  reasonix: ReasonixRunner;
-  reasonixCommand?: string[];
+  agent: AgentRunner;
+  agentCommand?: string[];
   initialized?: boolean;
 }

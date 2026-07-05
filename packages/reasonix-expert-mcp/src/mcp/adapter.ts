@@ -1,5 +1,5 @@
 import { RuntimeWorkerError } from "../worker/client";
-import { extractSingleJsonObject } from "../reasonix/output-normalizer";
+import { extractSingleJsonObject } from "../agents/output-normalizer";
 import { ERROR_CODES, errorLayerForCode } from "../agent/error-taxonomy";
 import { reviewDiffHandler } from "./tools/review-diff";
 import type {
@@ -7,7 +7,7 @@ import type {
   ToolCallRequest,
   ToolResult,
   ToolHandler,
-  ReasonixToolsAdapterOptions,
+  AgentToolsAdapterOptions,
 } from "./types";
 
 // ── Runtime decision payload ──
@@ -41,7 +41,7 @@ export function listTools() {
   return { tools };
 }
 
-export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions) {
+export function createReasonixToolsAdapter(options: AgentToolsAdapterOptions) {
   let nextTaskNumber = 1;
   let nextRequestNumber = 1;
   const initialized = options.initialized ?? false;
@@ -75,7 +75,7 @@ export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions)
         decision = asRuntimeDecision(
           await options.runtime.call(
             "runtime.evaluate_operation",
-            handler.buildRuntimeRequest(input.value, options.reasonixCommand),
+            handler.buildRuntimeRequest(input.value, options.agentCommand),
           ),
         );
       } catch (error) {
@@ -94,18 +94,18 @@ export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions)
         );
       }
 
-      let run: ReasonixRunResult;
+      let run: AgentRunResult;
       try {
-        run = await handler.invokeReasonix(options.reasonix, input.value);
+        run = await handler.invokeAgent(options.agent, input.value);
       } catch (error) {
         return errorToolResult(
           ERROR_CODES.WORKER_UNAVAILABLE,
-          error instanceof Error ? error.message : "Reasonix failed",
+          error instanceof Error ? error.message : "Agent backend failed",
           { side_effect: "side_effect_not_executed" },
         );
       }
       if (run.timedOut) {
-        return errorToolResult(ERROR_CODES.WORKER_TIMEOUT, "Reasonix invocation timed out", {
+        return errorToolResult(ERROR_CODES.WORKER_TIMEOUT, "Agent backend timed out", {
           diagnostics: { stderr: run.stderr },
         });
       }
@@ -132,7 +132,7 @@ export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions)
       if (parsedValue.task_id !== inputValue.task_id || parsedValue.request_id !== inputValue.request_id) {
         return errorToolResult(
           ERROR_CODES.WORKER_IDENTITY_MISMATCH,
-          "Reasonix output task_id/request_id did not match request",
+          "Agent output task_id/request_id did not match request",
           { diagnostics: { stderr: run.stderr } },
         );
       }
@@ -141,14 +141,14 @@ export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions)
       if (validationError) {
         return errorToolResult(
           ERROR_CODES.WORKER_SCHEMA_INVALID,
-          "Reasonix output failed contract validation",
+          "Agent output failed contract validation",
           { diagnostics: { stderr: run.stderr, schema_errors: [validationError] } },
         );
       }
 
       return {
         isError: false,
-        content: [{ type: "text", text: String(parsedValue.summary ?? "Reasonix review completed.") }],
+        content: [{ type: "text", text: String(parsedValue.summary ?? "Agent review completed.") }],
         structuredContent: parsed.value,
         _meta: diagnosticsMeta(run.stderr),
       };
@@ -181,4 +181,5 @@ function errorToolResult(code: string, summary: string, meta: Record<string, unk
 function diagnosticsMeta(stderr: string): Record<string, unknown> | undefined {
   return stderr ? { diagnostics: { stderr } } : undefined;
 }
+
 

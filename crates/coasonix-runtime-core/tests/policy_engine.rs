@@ -133,12 +133,7 @@ fn argv_extra_argument_bypass_is_rejected() {
     let result = engine.evaluate(&request);
 
     assert_eq!(result.decision, RuntimeDecisionValue::Deny);
-    assert!(
-        result
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("argv args"))
-    );
+    assert!(result.reasons.iter().any(|reason| reason.contains("argv args")));
 }
 
 #[test]
@@ -209,3 +204,4 @@ fn m2_minimum_owned_types_are_constructible() {
     assert_eq!(decision.decision, RuntimeDecisionValue::Deny);
     assert_eq!(routing.lane, "review");
 }
+

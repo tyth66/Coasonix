@@ -35,7 +35,7 @@ struct JsonRpcRequest {
 #[derive(Debug, Deserialize)]
 struct InitializeParams {
     repo_root: PathBuf,
-    reasonix_executable: String,
+    agent_executable: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,7 +136,7 @@ impl Worker {
             serde_json::from_value(params).map_err(|_| invalid_params())?;
         let kernel = RuntimeKernel::initialize(RuntimeConfig {
             repo_root: params.repo_root,
-            reasonix_executable: params.reasonix_executable,
+            agent_executable: params.agent_executable,
         })
         .map_err(|_| runtime_unavailable())?;
         self.kernel = Some(kernel);
@@ -259,3 +259,4 @@ fn runtime_internal_error() -> JsonRpcError {
         message: "runtime_internal_error",
     }
 }
+

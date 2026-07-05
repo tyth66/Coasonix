@@ -5,9 +5,9 @@ import { ERROR_CODES } from "./error-taxonomy";
 export type BackendProfile = "mock" | "conformance" | "reasonix-cli" | "mimocode-cli";
 
 export interface BackendProfileEnvironment {
-  COASONIX_REASONIX_CLI_COMMAND_JSON?: string;
+  COASONIX_AGENT_CLI_COMMAND_JSON?: string;
   COASONIX_MIMOCODE_CLI_COMMAND_JSON?: string;
-  COASONIX_REASONIX_TIMEOUT_MS?: string;
+  COASONIX_AGENT_TIMEOUT_MS?: string;
   COASONIX_MIMOCODE_TIMEOUT_MS?: string;
 }
 
@@ -40,19 +40,19 @@ export function resolveBackendProfile(options: ResolveBackendProfileOptions): Re
       return {
         profile: options.profile,
         command: mockWorkerCommand(options.repoRoot),
-        timeoutMs: timeoutMs(env.COASONIX_REASONIX_TIMEOUT_MS),
+        timeoutMs: timeoutMs(env.COASONIX_AGENT_TIMEOUT_MS),
       };
     case "reasonix-cli":
       return {
         profile: options.profile,
-        command: commandJson(env.COASONIX_REASONIX_CLI_COMMAND_JSON, "COASONIX_REASONIX_CLI_COMMAND_JSON"),
-        timeoutMs: timeoutMs(env.COASONIX_REASONIX_TIMEOUT_MS),
+        command: commandJson(env.COASONIX_AGENT_CLI_COMMAND_JSON, "COASONIX_AGENT_CLI_COMMAND_JSON"),
+        timeoutMs: timeoutMs(env.COASONIX_AGENT_TIMEOUT_MS),
       };
     case "mimocode-cli":
       return {
         profile: options.profile,
         command: commandJson(env.COASONIX_MIMOCODE_CLI_COMMAND_JSON, "COASONIX_MIMOCODE_CLI_COMMAND_JSON"),
-        timeoutMs: timeoutMs(env.COASONIX_MIMOCODE_TIMEOUT_MS ?? env.COASONIX_REASONIX_TIMEOUT_MS),
+        timeoutMs: timeoutMs(env.COASONIX_MIMOCODE_TIMEOUT_MS ?? env.COASONIX_AGENT_TIMEOUT_MS),
       };
   }
 }
@@ -93,7 +93,8 @@ function timeoutMs(value: string | undefined): number {
   }
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new BackendProfileError("COASONIX_REASONIX_TIMEOUT_MS must be a positive integer");
+    throw new BackendProfileError("COASONIX_AGENT_TIMEOUT_MS must be a positive integer");
   }
   return parsed;
 }
+
