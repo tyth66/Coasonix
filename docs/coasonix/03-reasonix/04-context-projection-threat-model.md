@@ -1,5 +1,11 @@
 # Context Projection Threat Model
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 上下文投影威胁模型。
+> 当前 v1 不存在 Context Projector，MCP 工具参数直接传给 Reasonix。
+> 威胁模型中描述的攻击面（prompt injection、secret leakage、scope expansion）
+> 在当前 v1 中部分由 Policy Engine 和 ArtifactPolicy 覆盖，但 projection 层
+> 的 redaction、compression、hashing 未实现。
+
 Context Projection 是 Coasonix 最容易被攻击的节点之一。本文件定义上下文投影攻击面、处理规则和测试模型。
 
 ## 1. Assets

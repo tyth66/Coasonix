@@ -1,5 +1,9 @@
 # 上下文架构规范
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 上下文投影架构。
+> 当前 v1 的 MCP 工具参数直接传给 Reasonix，不存在 Context Projector。
+> 代码中无三层上下文模型、redaction、projection hash 的实现。
+
 ## 20. Codex × Reasonix 上下文设计规范（Context Architecture Spec）
 
 ### 20.1 上下文设计总原则

@@ -1,5 +1,10 @@
 # Cache Engineering Model
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 KV cache 复用策略。
+> 当前 v1 实现中 SQLite 有 `cache_entries` 表但 `reuse_enabled` 始终为 0，
+> cache hit 功能被禁用（见 `02-runtime/06-executable-runtime-details.md` §6）。
+> 代码中无 cache reuse 的实现。
+
 Reasonix cache performance depends on stable prompt prefix, schema stability, and deterministic context projection. This file defines cache keys, invalidation, and reuse rules.
 
 ## 1. Cache Layers

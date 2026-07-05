@@ -1,5 +1,9 @@
 # Patch Transaction Model
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 patch 事务模型。
+> 当前 v1 只支持只读 `reasonix.review_diff`，不涉及任何 patch 生成、
+> 安全检查、dry-run、apply、rollback。代码中无 patch 相关实现。
+
 本文件定义 Reasonix patch 从 proposal 到 apply、verify、rollback 的事务语义，防止半应用状态。
 
 ## 1. Transaction States

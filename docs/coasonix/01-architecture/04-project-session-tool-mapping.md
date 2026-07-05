@@ -1,4 +1,8 @@
 # Reasonix Project / Session / Tool Mapping
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 Project Controller
+> 和 Session Lane 路由策略。当前 v1 无 Project Controller 概念，每个
+> `tools/call` 是独立的——不共享 Reasonix 会话、不做 lane 路由、不跨调用
+> 复用 cache。Session key 设计为 task-scoped。
 
 本文件定义多个 Codex 会话调用 `reasonix.*` MCP tools 时，Wrapper / Gateway 如何映射到 Reasonix 的 project controller、task namespace、session pool、session lane 和单次 tool call。
 

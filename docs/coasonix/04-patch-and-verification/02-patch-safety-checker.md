@@ -1,5 +1,8 @@
 # Patch Safety Checker
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 patch 安全检查器。
+> 当前 v1 不涉及 patch。代码中无对应实现。
+
 Patch Safety Checker determines whether a Reasonix-proposed unified diff is eligible for Codex-controlled application. It does not prove correctness; it only permits Codex to attempt a patch transaction.
 
 ## 1. Inputs

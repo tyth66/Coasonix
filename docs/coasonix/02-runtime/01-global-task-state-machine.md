@@ -1,5 +1,10 @@
 # Global Task State Machine Spec
 
+> **实现状态**：此文档描述的任务状态机已在 `crates/coasonix-runtime-core/src/state/mod.rs`
+> 中实现。状态为 Created → Running → Completed/Failed。
+> `waiting_for_approval` 和 `stopped_by_limit` 状态是 post-v1 设计，
+> 当前代码未使用。
+
 本文件定义 Coasonix 的全局任务状态机。它统一 task state、Codex decision、human approval、verification、loop limiter 和 patch transaction 的状态语义，避免各模块“局部正确、全局不一致”。
 
 ## 1. State Model

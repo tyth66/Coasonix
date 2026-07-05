@@ -1,5 +1,8 @@
 # Verification Gate
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 验证门禁。
+> 当前 v1 只做 diff 审查，不包含结构化 verification gate。代码中无对应实现。
+
 Verification Gate upgrades a claim from advisory or inferred status to verified status using tests, lint, build, benchmark, profiling, static analysis, or approved human evidence.
 
 ## 1. Verification Types

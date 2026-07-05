@@ -1,5 +1,10 @@
 # Observability Contract
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 可观测性系统。
+> 当前 v1 的唯一可观测性机制是 SQLite 审计日志（`audit_events` 表，append-only）。
+> 文档中描述的 metrics counters、tracing spans、debug hooks、SLO 阈值均未实现。
+> Rust 代码中无 `tracing` crate，无 metrics 导出，无 span 构造。
+
 Audit log explains what happened. Observability explains how the agent system behaves over time. Coasonix requires metrics, traces, and debugging hooks in addition to audit events.
 
 ## 1. Metrics

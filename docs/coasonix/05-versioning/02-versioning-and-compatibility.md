@@ -1,5 +1,8 @@
 # Versioning and Compatibility Strategy
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 兼容性策略。
+> 当前 v1 无多版本共存场景，兼容性规则尚未被代码执行。
+
 Coasonix has four versioned surfaces: Codex contract, Wrapper protocol, Reasonix runtime contract, and Schema/tool contract. This file defines compatibility rules so the system does not gradually fragment.
 
 ## 1. Versioned Surfaces

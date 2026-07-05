@@ -1,5 +1,9 @@
 # Reasonix Concurrency Model
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 并行调用策略。
+> 当前 v1 实现仅支持单次串行 `reasonix.review_diff` 调用，不存在 fan-out、
+> snapshot、merge、lane routing 等机制。代码中无对应实现。
+
 本文件定义 Reasonix 调用的并发策略。默认模型是 controlled parallel fan-out with serial commit：分析可以并行，状态变更和 patch 事务必须串行。
 
 ## 1. Concurrency Modes
@@ -118,7 +122,7 @@ Each parallel result path must be task/request scoped:
 .agent/results/TASK-001/REQ-003.performance_review.json
 ```
 
-## 6.1 Task Namespace Isolation
+### 6.1 Task Namespace Isolation
 
 Multiple Codex sessions may share one Reasonix Project Controller, but each task must use a separate namespace:
 

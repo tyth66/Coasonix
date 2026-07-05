@@ -1,5 +1,8 @@
 # Human Approval Gate
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 人工审批门禁。
+> 当前 v1 不涉及高风险变更，无审批流程。代码中无对应实现。
+
 Human Approval Gate is the mandatory blocking state for high-risk changes. It is not a warning.
 
 ## 1. Approval Triggers

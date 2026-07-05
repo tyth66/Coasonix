@@ -1,5 +1,10 @@
 # Machine-Executable Schema Contract and Schema Versioning
 
+> **设计规格（Design Specification）**：此文档描述的是 post-v1 schema 版本演进策略。
+> 当前 v1 只有一个 schema 版本（`review_diff_input_v1` / `review_result_v1`），
+> 无版本协商、向后兼容、deprecation 机制。schema fixture 位于
+> `schemas/coasonix-v1.schema.json`。
+
 本文件定义 Coasonix 的测试契约 Schema 层。当前 v1 运行时不依赖该文件启动；该文件用于锁定当前 `reasonix.review_diff` 输入/输出形状。
 
 ## 1. Canonical Schema Location
