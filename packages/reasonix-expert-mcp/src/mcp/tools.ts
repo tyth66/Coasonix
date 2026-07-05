@@ -1,7 +1,10 @@
 import { RuntimeWorkerError } from "../worker/client";
 import { extractSingleJsonObject } from "../reasonix/output-normalizer";
+import {
+  EXTERNAL_REVIEW_DIFF_TOOL_NAME,
+  RUNTIME_REVIEW_DIFF_OPERATION,
+} from "../agent/naming";
 
-const REVIEW_DIFF_TOOL_NAME = "reasonix.review_diff";
 const REVIEW_DIFF_INPUT_REF =
   "https://coasonix.local/schemas/coasonix-v1.schema.json#/$defs/review_diff_input_v1";
 
@@ -66,7 +69,7 @@ export function listTools() {
   return {
     tools: [
       {
-        name: REVIEW_DIFF_TOOL_NAME,
+        name: EXTERNAL_REVIEW_DIFF_TOOL_NAME,
         description: "Review a prepared diff through the Coasonix runtime gate.",
         inputSchema: {
           type: "object",
@@ -89,7 +92,7 @@ export function createReasonixToolsAdapter(options: ReasonixToolsAdapterOptions)
       if (!initialized) {
         return errorToolResult("runtime_unavailable", "MCP server is not initialized");
       }
-      if (request.name !== REVIEW_DIFF_TOOL_NAME) {
+      if (request.name !== EXTERNAL_REVIEW_DIFF_TOOL_NAME) {
         return errorToolResult("invalid_input", `Unknown tool ${request.name}`);
       }
 
@@ -248,7 +251,7 @@ function runtimeOperationRequest(input: ReviewDiffInput, reasonixCommand = ["rea
   return {
     task_id: input.task_id,
     request_id: input.request_id,
-    operation: REVIEW_DIFF_TOOL_NAME,
+    operation: RUNTIME_REVIEW_DIFF_OPERATION,
     permission_level: input.permission_level,
     resources: {
       read_paths: artifactReadPaths(input),

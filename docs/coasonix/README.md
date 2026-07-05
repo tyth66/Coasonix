@@ -142,9 +142,9 @@ Runtime Enforcement Layer design: complete
 Global Runtime / Project Controller isolation / Session Pool / session lane mapping: complete
 MVP engineering defaults: complete
 v1 technology baseline: Rust 2024 core, Bun ESM adapter, JSON-RPC stdio worker, SQLite persistence
-v1 implementation blueprint: complete through M14
+v1 implementation blueprint: complete through M15
 v1 MVP implementation: complete for Rust-gated reasonix.review_diff through a runnable MCP stdio server
-Codex-side gateway productization: M12 setup, M13 healthcheck, and M14 Agent Worker Contract conformance implemented
+Codex-side gateway productization: M12 setup, M13 healthcheck, M14 Agent Worker Contract conformance, and M15 internal naming migration implemented
 Safe autonomous patch operation: still blocked until patch safety, approval, and verification gates are implemented
 ```
 
@@ -166,5 +166,7 @@ Safe autonomous patch operation: still blocked until patch safety, approval, and
 runtime initialize、tools/list、mock review_diff 和 shutdown；M14 已实现
 后端中立的 `conformance:agent-worker`，可验证 worker 的 `review-diff`
 stdio 契约。下一步是工具命名兼容迁移，不应破坏外部 v1
-`reasonix.review_diff` 工具名。Reasonix、MimoCode 和其他智能体应作为后续 backend bridge 接入，
+`reasonix.review_diff` 工具名；M15 已集中定义外部 v1 名称、保留的
+`agent.review_diff` 后端中立 alias 和 v1 runtime operation 映射，但 alias
+仍不出现在 `tools/list`。下一步是 Codex-facing error taxonomy。Reasonix、MimoCode 和其他智能体应作为后续 backend bridge 接入，
 不应直接牵动 Codex MCP shell、Rust runtime gate 或 schema/audit 核心。

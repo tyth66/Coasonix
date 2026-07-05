@@ -63,7 +63,8 @@ Reasonix, MimoCode, and other agents should enter later as backend bridges.
 | M12 | Codex MCP setup installer with mock backend profile, protocol-clean startup args, and post-add registration verification | `package.json`, `packages/reasonix-expert-mcp/src/codex/`, `packages/reasonix-expert-mcp/src/reasonix/mock-worker.ts`, `bin/coasonix-mock-worker*` |
 | M13 | Codex MCP healthcheck with registration, server startup, runtime, tools/list, mock review, and shutdown diagnostics | `packages/reasonix-expert-mcp/src/codex/health.ts`, `packages/reasonix-expert-mcp/src/codex/health.test.ts`, `package.json` |
 | M14 | Backend-neutral Agent Worker Contract conformance for `review-diff` worker stdout/stdin/exit semantics | `packages/reasonix-expert-mcp/src/agent/worker-contract.ts`, `packages/reasonix-expert-mcp/src/agent/worker-contract.test.ts`, `package.json` |
-| M15+ | Tool naming migration, error taxonomy, and backend profiles | `docs/implementation/codex-side-gateway-roadmap.md` |
+| M15 | Internal tool naming migration with reserved backend-neutral alias while preserving external v1 `reasonix.review_diff` | `packages/reasonix-expert-mcp/src/agent/naming.ts`, `packages/reasonix-expert-mcp/src/mcp/tools.ts`, `packages/reasonix-expert-mcp/src/mcp/tools.test.ts` |
+| M16+ | Codex-facing error taxonomy and backend profiles | `docs/implementation/codex-side-gateway-roadmap.md` |
 
 Working v1 call path:
 
@@ -154,6 +155,15 @@ exit 0 means the worker response is available
 nonzero exit means worker failure
 task_id and request_id must match the input
 markdown-fenced JSON, multiple JSON objects, empty stdout, malformed JSON, schema mismatch, invalid confidence, timeout, and nonzero exit fail conformance
+```
+
+Tool naming compatibility:
+
+```text
+external v1 tool name remains reasonix.review_diff
+backend-neutral alias is reserved internally as agent.review_diff
+runtime operation mapping remains reasonix.review_diff for v1 Rust policy compatibility
+tools/list does not expose agent.review_diff yet
 ```
 
 Required environment:
@@ -291,6 +301,8 @@ health:codex-mcp reports runtime_unavailable separately from worker_nonzero_exit
 health:codex-mcp passes against the mock profile through the real MCP server process
 conformance:agent-worker passes against the repo-local mock worker
 Agent Worker Contract validation rejects timeout, empty stdout, malformed JSON, multiple JSON objects, markdown-fenced JSON, wrong task_id, wrong request_id, schema mismatch, nonzero exit, and invalid confidence
+M15 naming constants preserve reasonix.review_diff externally while reserving agent.review_diff internally
+tools/list still exposes only reasonix.review_diff
 ```
 
 Repository verification command set:

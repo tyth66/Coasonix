@@ -23,9 +23,9 @@ Runtime Enforcement Layer design: complete
 Global Runtime / Project Controller isolation / Session Pool / session lane mapping: complete
 MVP engineering defaults: complete
 v1 technology baseline: Rust 2024 core, Bun ESM adapter, JSON-RPC stdio worker, SQLite persistence
-v1 implementation blueprint: complete through M14
+v1 implementation blueprint: complete through M15
 v1 MVP implementation: complete for Rust-gated reasonix.review_diff through a runnable MCP stdio server
-Codex-side gateway productization: M12 setup, M13 healthcheck, and M14 Agent Worker Contract conformance implemented
+Codex-side gateway productization: M12 setup, M13 healthcheck, M14 Agent Worker Contract conformance, and M15 internal naming migration implemented
 Safe autonomous patch operation: still blocked until patch safety, approval, and verification gates are implemented
 ```
 
@@ -46,8 +46,8 @@ Next implementation focus:
 
 [docs/implementation/codex-side-gateway-roadmap.md](docs/implementation/codex-side-gateway-roadmap.md)
 
-The next slice should start the tool naming migration without breaking the
-external v1 `reasonix.review_diff` tool.
+The next slice should improve Codex-facing error taxonomy and layer-specific
+operator messages.
 
 Install the Coasonix MCP server into Codex with the mock backend profile:
 
@@ -91,6 +91,17 @@ The contract is backend-neutral: argv is `[worker_executable, "review-diff"]`,
 stdin is one `review_diff_input_v1` JSON object, stdout must be exactly one
 `review_result_v1` JSON object, stderr is diagnostics only, exit `0` means the
 worker response is available, and nonzero exit is a worker failure.
+
+Naming compatibility:
+
+```text
+external v1 tool name: reasonix.review_diff
+reserved backend-neutral alias: agent.review_diff
+runtime operation mapping for v1: reasonix.review_diff
+```
+
+The backend-neutral alias is internal only for now. It is not exposed in
+`tools/list` until a compatibility path is explicitly added.
 
 Run the local MCP stdio server:
 

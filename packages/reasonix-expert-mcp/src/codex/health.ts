@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { buildCodexMcpAddCommand, type BackendProfile, type CommandResult } from "./setup";
+import { EXTERNAL_REVIEW_DIFF_TOOL_NAME } from "../agent/naming";
 
 type CheckStatus = "pass" | "fail";
 
@@ -140,7 +141,7 @@ async function checkGatewaySmoke(options: HealthOptions): Promise<HealthCheck[]>
 
     const listed = await client.request("tools/list", {});
     const toolNames = listed.result?.tools?.map((tool: { name: string }) => tool.name) ?? [];
-    if (JSON.stringify(toolNames) !== JSON.stringify(["reasonix.review_diff"])) {
+    if (JSON.stringify(toolNames) !== JSON.stringify([EXTERNAL_REVIEW_DIFF_TOOL_NAME])) {
       checks.push(fail("tools_list", "server_startup_failed", `unexpected tools/list result: ${toolNames.join(",")}`));
       return await finishServer(child, checks);
     }
@@ -148,7 +149,7 @@ async function checkGatewaySmoke(options: HealthOptions): Promise<HealthCheck[]>
     checks.push(pass("stdout_protocol", "stdout contained parseable JSON-RPC response frames"));
 
     const result = await client.request("tools/call", {
-      name: "reasonix.review_diff",
+      name: EXTERNAL_REVIEW_DIFF_TOOL_NAME,
       arguments: reviewDiffInput(options.targetRepo),
     });
     if (result.result?.isError) {

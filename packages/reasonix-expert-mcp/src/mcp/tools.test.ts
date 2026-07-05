@@ -1,11 +1,23 @@
 import { describe, expect, test } from "bun:test";
 
 import { RuntimeWorkerError } from "../worker/client";
+import {
+  BACKEND_NEUTRAL_REVIEW_DIFF_ALIAS,
+  EXTERNAL_REVIEW_DIFF_TOOL_NAME,
+  RUNTIME_REVIEW_DIFF_OPERATION,
+} from "../agent/naming";
 import { createReasonixToolsAdapter, listTools } from "./tools";
 
 describe("tools/list", () => {
   test("exposes reasonix.review_diff only", () => {
     expect(listTools().tools.map((tool) => tool.name)).toEqual(["reasonix.review_diff"]);
+  });
+
+  test("keeps backend-neutral alias internal until compatibility path is explicit", () => {
+    expect(EXTERNAL_REVIEW_DIFF_TOOL_NAME).toBe("reasonix.review_diff");
+    expect(BACKEND_NEUTRAL_REVIEW_DIFF_ALIAS).toBe("agent.review_diff");
+    expect(RUNTIME_REVIEW_DIFF_OPERATION).toBe(EXTERNAL_REVIEW_DIFF_TOOL_NAME);
+    expect(listTools().tools.map((tool) => tool.name)).not.toContain(BACKEND_NEUTRAL_REVIEW_DIFF_ALIAS);
   });
 
   test("inputSchema references review_diff_input_v1", () => {

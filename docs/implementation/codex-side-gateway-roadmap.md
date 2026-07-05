@@ -256,6 +256,16 @@ The external v1 tool name remains:
 reasonix.review_diff
 ```
 
+Current status:
+
+```text
+implemented as internal naming migration
+EXTERNAL_REVIEW_DIFF_TOOL_NAME remains reasonix.review_diff
+BACKEND_NEUTRAL_REVIEW_DIFF_ALIAS is reserved as agent.review_diff
+RUNTIME_REVIEW_DIFF_OPERATION maps to reasonix.review_diff for v1 Rust policy compatibility
+tools/list still exposes only reasonix.review_diff
+```
+
 For internal architecture, introduce backend-neutral terminology:
 
 ```text
@@ -274,6 +284,20 @@ v2: treat reasonix as one backend profile rather than the core tool namespace
 ```
 
 Do not rename the public tool until clients and docs have a compatibility path.
+
+Implemented entrypoints:
+
+```text
+packages/reasonix-expert-mcp/src/agent/naming.ts
+packages/reasonix-expert-mcp/src/mcp/tools.ts
+packages/reasonix-expert-mcp/src/mcp/tools.test.ts
+packages/reasonix-expert-mcp/src/codex/health.ts
+```
+
+The backend-neutral alias is intentionally not exposed yet. A future alias
+release must add client-facing compatibility tests, schema/policy review, and
+documentation before `agent.review_diff` or another alias appears in
+`tools/list`.
 
 ## M16: Codex-Facing Error Taxonomy
 
