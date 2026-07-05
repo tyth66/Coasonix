@@ -147,6 +147,24 @@ describe("Codex MCP healthcheck", () => {
     expect(stdout).toContain("Coasonix Codex MCP health: fail");
     expect(stdout).toContain("codex_mcp_not_registered");
   });
+
+  test("--help prints usage and exits zero", async () => {
+    const child = Bun.spawn(
+      [process.execPath, "packages/reasonix-expert-mcp/src/codex/health.ts", "--help"],
+      { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+    );
+
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("Usage:");
+    expect(stdout).toContain("--target-repo");
+  });
 });
 
 async function codexRegistered(_command: string, args: string[]) {

@@ -1,4 +1,11 @@
-import type { ReasonixRunResult, ReviewDiffInput } from "../mcp/tools";
+import type { ReasonixRunResult } from "./types";
+
+interface ProcessInput {
+  goal?: string;
+  repo?: { root?: string };
+  artifacts?: { diff_path?: string };
+  [key: string]: unknown;
+}
 
 export interface ReasonixProcessRunnerOptions {
   command: string[];
@@ -14,7 +21,7 @@ export class ReasonixProcessRunner {
     this.timeoutMs = options.timeoutMs;
   }
 
-  async runReviewDiff(input: ReviewDiffInput): Promise<ReasonixRunResult> {
+  async runReviewDiff(input: ProcessInput): Promise<ReasonixRunResult> {
     const process = Bun.spawn(this.command, {
       stdin: "pipe",
       stdout: "pipe",

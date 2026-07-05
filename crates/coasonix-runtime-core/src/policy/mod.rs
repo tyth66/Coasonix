@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sha2::{Digest, Sha256};
 
 use crate::artifact::{ArtifactPolicy, ResourceAccess};
@@ -43,30 +45,6 @@ pub struct RuntimeOperationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PolicyEvaluationRequest {
-    pub operation: String,
-    pub permission_level: PermissionLevel,
-    pub resources: ResourceSet,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeDecision {
-    pub task_id: String,
-    pub request_id: Option<String>,
-    pub operation: String,
-    pub decision: RuntimeDecisionValue,
-    pub reasons: Vec<String>,
-    pub command_hash: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RoutingMetadata {
-    pub project_key_hash: String,
-    pub session_key_hash: String,
-    pub lane: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyEvaluationResult {
     pub decision: RuntimeDecisionValue,
     pub reasons: Vec<String>,
@@ -74,36 +52,77 @@ pub struct PolicyEvaluationResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct PolicyEngine {
+struct RegisteredOperation {
     operation: String,
     required_permission: PermissionLevel,
     reasonix_executable: String,
+    subcommand: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PolicyEngine {
+    operations: HashMap<String, RegisteredOperation>,
     artifact_policy: ArtifactPolicy,
 }
 
 impl PolicyEngine {
+    pub fn new(artifact_policy: ArtifactPolicy) -> Self {
+        Self {
+            operations: HashMap::new(),
+            artifact_policy,
+        }
+    }
+
+    pub fn register_operation(
+        mut self,
+        operation: impl Into<String>,
+        required_permission: PermissionLevel,
+        reasonix_executable: impl Into<String>,
+        subcommand: impl Into<String>,
+    ) -> Self {
+        let op = operation.into();
+        self.operations.insert(
+            op.clone(),
+            RegisteredOperation {
+                operation: op,
+                required_permission,
+                reasonix_executable: reasonix_executable.into(),
+                subcommand: subcommand.into(),
+            },
+        );
+        self
+    }
+
     pub fn review_diff(
         reasonix_executable: impl Into<String>,
         artifact_policy: ArtifactPolicy,
     ) -> Self {
-        Self {
-            operation: "reasonix.review_diff".to_string(),
-            required_permission: PermissionLevel::L1DiffReview,
-            reasonix_executable: reasonix_executable.into(),
-            artifact_policy,
-        }
+        Self::new(artifact_policy).register_operation(
+            "reasonix.review_diff",
+            PermissionLevel::L1DiffReview,
+            reasonix_executable,
+            "review-diff",
+        )
     }
 
     pub fn evaluate(&self, request: &RuntimeOperationRequest) -> PolicyEvaluationResult {
         let mut reasons = Vec::new();
         let mut computed_command_hash = None;
 
-        if request.operation != self.operation {
+        let Some(registered) = self.operations.get(&request.operation) else {
             reasons.push(format!("unknown operation {}", request.operation));
-        }
+            return PolicyEvaluationResult {
+                decision: RuntimeDecisionValue::Deny,
+                reasons,
+                command_hash: None,
+            };
+        };
 
-        if request.permission_level != self.required_permission {
-            reasons.push("permission level does not match reasonix.review_diff".to_string());
+        if request.permission_level != registered.required_permission {
+            reasons.push(format!(
+                "permission level does not match {}",
+                registered.operation
+            ));
         }
 
         if request.resources.network {
@@ -126,12 +145,15 @@ impl PolicyEngine {
             Some(CommandInvocation::Argv(argv)) => {
                 if argv.is_empty() {
                     reasons.push("argv command is empty".to_string());
-                } else if argv[0] != self.reasonix_executable {
-                    reasons
-                        .push("argv[0] does not match configured Reasonix executable".to_string());
-                } else if argv.len() != 2 || argv.get(1).map(String::as_str) != Some("review-diff")
-                {
-                    reasons.push("argv args do not match review_diff profile".to_string());
+                } else if argv[0] != registered.reasonix_executable {
+                    reasons.push(
+                        "argv[0] does not match configured Reasonix executable".to_string(),
+                    );
+                } else if argv.len() != 2 || argv.get(1).map(String::as_str) != Some(&registered.subcommand) {
+                    reasons.push(format!(
+                        "argv args do not match {} profile",
+                        registered.operation
+                    ));
                 } else {
                     computed_command_hash = Some(command_hash(argv));
                 }
@@ -156,6 +178,32 @@ impl PolicyEngine {
     }
 }
 
+
+// ── Composite request/eval types (kept for test constructibility) ──
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PolicyEvaluationRequest {
+    pub operation: String,
+    pub permission_level: PermissionLevel,
+    pub resources: ResourceSet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeDecision {
+    pub task_id: String,
+    pub request_id: Option<String>,
+    pub operation: String,
+    pub decision: RuntimeDecisionValue,
+    pub reasons: Vec<String>,
+    pub command_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutingMetadata {
+    pub project_key_hash: String,
+    pub session_key_hash: String,
+    pub lane: String,
+}
 fn command_hash(argv: &[String]) -> String {
     let mut hasher = Sha256::new();
     for arg in argv {

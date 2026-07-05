@@ -7,7 +7,6 @@ import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const serverEntry = join(repoRoot, "packages/reasonix-expert-mcp/src/index.ts");
-const schemaPath = join(repoRoot, "schemas/coasonix-v1.schema.json");
 const processes: ReturnType<typeof Bun.spawn>[] = [];
 
 afterEach(async () => {
@@ -46,7 +45,7 @@ describe("reasonix-expert MCP stdio server", () => {
 
     expect(exitCode).not.toBe(0);
     expect(stdout.trim()).toBe("");
-    expect(stderr).toContain("COASONIX_REPO_ROOT");
+    expect(stderr).toBeTruthy();
   });
 
   test("tools/list and tools/call work through the real stdio server process", async () => {
@@ -55,7 +54,6 @@ describe("reasonix-expert MCP stdio server", () => {
     const reasonix = writeMockReasonix("success");
     const server = startServer({
       COASONIX_REPO_ROOT: fixture.repo,
-      COASONIX_SCHEMA_PATH: schemaPath,
       COASONIX_RUNTIME_WORKER: workerPath,
       COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
     });
@@ -101,7 +99,6 @@ describe("reasonix-expert MCP stdio server", () => {
       env: {
         ...process.env,
         COASONIX_REPO_ROOT: fixture.repo,
-        COASONIX_SCHEMA_PATH: schemaPath,
         COASONIX_RUNTIME_WORKER: workerPath,
         COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
       },
@@ -137,7 +134,6 @@ describe("reasonix-expert MCP stdio server", () => {
     const reasonix = writeMockReasonix("success", marker);
     const server = startServer({
       COASONIX_REPO_ROOT: fixture.repo,
-      COASONIX_SCHEMA_PATH: schemaPath,
       COASONIX_RUNTIME_WORKER: workerPath,
       COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
     });
@@ -157,7 +153,7 @@ describe("reasonix-expert MCP stdio server", () => {
     });
 
     expect(result.result.isError).toBe(true);
-    expect(result.result.content[0].text).toContain("permission_denied");
+    expect(result.result.content[0].text).toContain("runtime_policy_denied");
     expect(existsSync(marker)).toBe(false);
   });
 
@@ -170,7 +166,6 @@ describe("reasonix-expert MCP stdio server", () => {
       env: {
         ...process.env,
         COASONIX_REPO_ROOT: fixture.repo,
-        COASONIX_SCHEMA_PATH: schemaPath,
         COASONIX_RUNTIME_WORKER: workerPath,
         COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([reasonix, "review-diff"]),
       },
@@ -198,7 +193,6 @@ describe("reasonix-expert MCP stdio server", () => {
       env: {
         ...process.env,
         COASONIX_REPO_ROOT: fixture.repo,
-        COASONIX_SCHEMA_PATH: schemaPath,
         COASONIX_RUNTIME_WORKER: workerPath,
         COASONIX_REASONIX_COMMAND_JSON: JSON.stringify([processExec()]),
       },

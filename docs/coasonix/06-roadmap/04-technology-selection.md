@@ -163,7 +163,9 @@ crates/
   coasonix-runtime-worker/    # JSON-RPC stdio worker (thin main.rs)
 packages/
   reasonix-expert-mcp/        # TypeScript MCP adapter
-    src/mcp/                  # server, tools
+    src/mcp/                  # server, adapter, tools/
+    tools/
+      review-diff.ts      # pluggable tool handler (strategy pattern)
     src/worker/               # client, protocol, errors
     src/reasonix/             # runner, output-normalizer, mock-worker
     src/agent/                # error-taxonomy, backend-profile, naming, worker-contract
@@ -228,3 +230,4 @@ dynamic runtime as the protocol adapter.
 
 All Rust: rejected because the MCP adapter surface is faster and lower-risk
 in TypeScript, while Rust stays focused on the enforceable runtime core.
+

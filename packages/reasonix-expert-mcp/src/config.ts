@@ -1,8 +1,9 @@
 import { resolve } from "node:path";
 
+import { ERROR_CODES, errorLayerForCode } from "./agent/error-taxonomy";
+
 export interface ServerConfig {
   repoRoot: string;
-  schemaPath: string;
   runtimeWorker: string;
   reasonixCommand: string[];
   runtimeRequestTimeoutMs: number;
@@ -12,18 +13,17 @@ export interface ServerConfig {
 type Environment = Record<string, string | undefined>;
 
 export class ConfigError extends Error {
+  readonly code = ERROR_CODES.CONFIG_MISSING;
+  readonly layer = errorLayerForCode(ERROR_CODES.CONFIG_MISSING);
+
   constructor(message: string) {
-    super(message);
+    super(`${ERROR_CODES.CONFIG_MISSING}: ${message}`);
     this.name = "ConfigError";
   }
 }
 
 export function loadServerConfig(env: Environment = process.env): ServerConfig {
-  const missing = [
-    "COASONIX_REPO_ROOT",
-    "COASONIX_SCHEMA_PATH",
-    "COASONIX_RUNTIME_WORKER",
-  ].filter((key) => !env[key]);
+  const missing = ["COASONIX_REPO_ROOT", "COASONIX_RUNTIME_WORKER"].filter((key) => !env[key]);
 
   if (!env.COASONIX_REASONIX_COMMAND_JSON && !env.COASONIX_REASONIX_COMMAND) {
     missing.push("COASONIX_REASONIX_COMMAND_JSON or COASONIX_REASONIX_COMMAND");
@@ -35,7 +35,6 @@ export function loadServerConfig(env: Environment = process.env): ServerConfig {
 
   return {
     repoRoot: resolve(required(env.COASONIX_REPO_ROOT, "COASONIX_REPO_ROOT")),
-    schemaPath: resolve(required(env.COASONIX_SCHEMA_PATH, "COASONIX_SCHEMA_PATH")),
     runtimeWorker: resolve(required(env.COASONIX_RUNTIME_WORKER, "COASONIX_RUNTIME_WORKER")),
     reasonixCommand: parseReasonixCommand(env),
     runtimeRequestTimeoutMs: parsePositiveInteger(

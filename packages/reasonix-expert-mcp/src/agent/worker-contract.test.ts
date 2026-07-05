@@ -67,6 +67,24 @@ describe("Agent Worker Contract", () => {
     expect(stderr).toBe("");
     expect(stdout).toContain("Agent Worker Contract conformance: pass");
   });
+
+  test("--help prints usage and exits zero", async () => {
+    const child = Bun.spawn(
+      [process.execPath, "packages/reasonix-expert-mcp/src/agent/worker-contract.ts", "--help"],
+      { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+    );
+
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("Usage:");
+    expect(stdout).toContain("--command-json");
+  });
 });
 
 function invalidCases(): Array<[string, AgentWorkerRunResult, string]> {

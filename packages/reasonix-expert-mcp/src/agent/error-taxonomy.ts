@@ -15,11 +15,13 @@ export const ERROR_CODES = {
   BACKEND_NOT_CONFIGURED: "backend_not_configured",
 } as const;
 
-export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
-
-export type ErrorLayer = "config" | "codex" | "server" | "runtime" | "worker" | "backend";
-
 export function errorLayerForCode(code: string): ErrorLayer {
+  if (code.startsWith("runtime_")) {
+    return "runtime";
+  }
+  if (code.startsWith("worker_")) {
+    return "worker";
+  }
   switch (code) {
     case ERROR_CODES.CONFIG_MISSING:
       return "config";
@@ -27,13 +29,13 @@ export function errorLayerForCode(code: string): ErrorLayer {
       return "codex";
     case ERROR_CODES.SERVER_STARTUP_FAILED:
       return "server";
-    case ERROR_CODES.RUNTIME_UNAVAILABLE:
-    case ERROR_CODES.RUNTIME_POLICY_DENIED:
-    case ERROR_CODES.RUNTIME_SCHEMA_INVALID:
-      return "runtime";
     case ERROR_CODES.BACKEND_NOT_CONFIGURED:
       return "backend";
     default:
       return "worker";
   }
 }
+
+export type ErrorLayer = "config" | "codex" | "server" | "runtime" | "worker" | "backend";
+
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

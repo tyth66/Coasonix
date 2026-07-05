@@ -337,7 +337,17 @@ function classifyStartupFailure(message: string, stderr: string): HealthCheck {
   return fail("server_startup", ERROR_CODES.SERVER_STARTUP_FAILED, combined.trim());
 }
 
-function classifyBackendFailure(result: { content?: Array<{ text?: string }> }): HealthCheck {
+function classifyBackendFailure(result: {
+  content?: Array<{ text?: string }>;
+  _meta?: Record<string, unknown>;
+}): HealthCheck {
+  const metaCode = result._meta?.code;
+  if (typeof metaCode === "string" && errorLayerForCode(metaCode) !== undefined) {
+    const text = result.content?.map((item) => item.text ?? "").join("\n") ?? "";
+    return fail("mock_review_diff", metaCode, text || `worker failed (${metaCode})`);
+  }
+
+  // Fallback: regex classification for backward compatibility with pre-taxonomy errors
   const text = result.content?.map((item) => item.text ?? "").join("\n") ?? "";
   if (/exited with/i.test(text)) {
     return fail("mock_review_diff", ERROR_CODES.WORKER_NONZERO_EXIT, text);
@@ -418,7 +428,26 @@ function parseArgs(argv: string[]) {
 }
 
 if (import.meta.main) {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(`Usage: bun run health:codex-mcp [options]
+
+Check Coasonix Codex MCP gateway health.
+
+Options:
+  --repo-root <path>     Coasonix repository root (default: auto-detect)
+  --target-repo <path>   Target repository to healthcheck against
+  --profile <name>       Backend profile: mock (default), conformance, reasonix-cli, mimocode-cli
+  --codex-command <cmd>  Codex CLI command (default: codex)
+  --bun-command <cmd>    Bun executable path (default: auto-detect)
+
+Example:
+  bun run health:codex-mcp --target-repo D:\\work\\my-project
+`);
+    process.exit(0);
+  }
+
+  const args = parseArgs(argv);
   const repoRoot = String(args.repoRoot ?? resolve(import.meta.dir, "../../../.."));
   const targetRepo = String(args.targetRepo ?? process.cwd());
   const profile = String(args.profile ?? "mock") as BackendProfile;

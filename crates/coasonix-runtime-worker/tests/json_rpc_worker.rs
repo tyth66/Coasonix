@@ -73,10 +73,6 @@ impl WorkerProcess {
     }
 }
 
-fn schema_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas/coasonix-v1.schema.json")
-}
-
 fn temp_repo(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -95,7 +91,6 @@ fn initialize(worker: &mut WorkerProcess, repo: &PathBuf) -> Value {
         "method": "runtime.initialize",
         "params": {
             "repo_root": repo,
-            "schema_path": schema_path(),
             "reasonix_executable": "reasonix"
         }
     }))
@@ -173,7 +168,6 @@ fn invalid_params_are_rejected() {
         "method": "runtime.initialize",
         "params": {
             "repo_root": 42,
-            "schema_path": schema_path(),
             "reasonix_executable": "reasonix"
         }
     }));
@@ -242,42 +236,6 @@ fn policy_denial_still_returns_runtime_decision_result() {
     assert_eq!(response["result"]["schema_version"], "runtime_decision_v1");
     assert_eq!(response["result"]["decision"], "deny");
     assert_eq!(response["result"]["engine_results"]["policy"], "deny");
-
-    let _ = worker.shutdown();
-}
-
-#[test]
-fn validate_schema_returns_schema_validation_result_v1() {
-    let repo = temp_repo("validate");
-    let mut worker = WorkerProcess::spawn();
-    assert!(initialize(&mut worker, &repo).get("error").is_none());
-
-    let response = worker.request(json!({
-        "jsonrpc": "2.0",
-        "id": "REQ-validate",
-        "method": "runtime.validate_schema",
-        "params": {
-            "task_id": "TASK-worker-validate",
-            "expected_schema": "review_result_v1",
-            "payload": {
-                "schema_version": "review_result_v1",
-                "task_id": "TASK-worker-validate",
-                "request_id": "REQ-validate",
-                "status": "ok",
-                "verdict": "pass",
-                "summary": "No findings.",
-                "confidence": 0.9
-            }
-        }
-    }));
-
-    assert_eq!(response["id"], "REQ-validate");
-    assert_eq!(
-        response["result"]["schema_version"],
-        "schema_validation_result_v1"
-    );
-    assert_eq!(response["result"]["request_id"], "REQ-validate");
-    assert_eq!(response["result"]["valid"], true);
 
     let _ = worker.shutdown();
 }

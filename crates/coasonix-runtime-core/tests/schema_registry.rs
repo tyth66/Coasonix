@@ -40,34 +40,6 @@ fn valid_review_diff_input() -> serde_json::Value {
     })
 }
 
-fn valid_runtime_decision() -> serde_json::Value {
-    json!({
-        "schema_version": "runtime_decision_v1",
-        "task_id": "TASK-schema",
-        "request_id": "REQ-schema",
-        "operation": "reasonix.review_diff",
-        "decision": "allow",
-        "engine_results": {
-            "schema": "allow",
-            "state": "allow",
-            "policy": "allow"
-        },
-        "reasons": []
-    })
-}
-
-fn valid_error_result() -> serde_json::Value {
-    json!({
-        "schema_version": "error_result_v1",
-        "task_id": "TASK-schema",
-        "request_id": "REQ-schema",
-        "status": "schema_validation_failed",
-        "verdict": "unknown",
-        "summary": "Schema validation failed.",
-        "recoverable": false
-    })
-}
-
 #[test]
 fn validates_review_result_v1_from_root_schema_registry() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
@@ -82,36 +54,10 @@ fn validates_review_result_v1_from_root_schema_registry() {
 }
 
 #[test]
-fn validates_error_result_v1_from_root_schema_registry() {
-    let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
-
-    let result = registry.validate("error_result_v1", &valid_error_result());
-
-    assert!(
-        result.valid,
-        "expected valid payload, got {:?}",
-        result.errors
-    );
-}
-
-#[test]
 fn validates_review_diff_input_v1_from_root_schema_registry() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
 
     let result = registry.validate("review_diff_input_v1", &valid_review_diff_input());
-
-    assert!(
-        result.valid,
-        "expected valid payload, got {:?}",
-        result.errors
-    );
-}
-
-#[test]
-fn validates_runtime_decision_v1_from_root_schema_registry() {
-    let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
-
-    let result = registry.validate("runtime_decision_v1", &valid_runtime_decision());
 
     assert!(
         result.valid,
@@ -254,19 +200,4 @@ fn malformed_json_returns_schema_error_without_panic() {
         .expect_err("malformed JSON should fail");
 
     assert!(error.to_string().contains("invalid JSON"));
-}
-
-#[test]
-fn schema_validation_result_can_be_shaped_as_schema_payload() {
-    let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
-    let validation = registry.validate("review_result_v1", &valid_review_result());
-
-    let payload = validation.to_payload("TASK-schema", Some("REQ-schema"));
-    let result = registry.validate("schema_validation_result_v1", &payload);
-
-    assert!(
-        result.valid,
-        "expected valid payload, got {:?}",
-        result.errors
-    );
 }

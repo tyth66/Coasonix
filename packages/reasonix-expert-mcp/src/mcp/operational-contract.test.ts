@@ -18,7 +18,6 @@ describe("MCP server operational contract", () => {
 
     expect(readme).toContain("bun run --silent --cwd=packages/reasonix-expert-mcp start:mcp");
     expect(readme).toContain("COASONIX_REPO_ROOT");
-    expect(readme).toContain("COASONIX_SCHEMA_PATH");
     expect(readme).toContain("COASONIX_RUNTIME_WORKER");
     expect(readme).toContain("COASONIX_REASONIX_COMMAND_JSON");
   });

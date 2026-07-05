@@ -4,7 +4,7 @@ use std::{
 };
 
 use coasonix_runtime_core::{
-    kernel::{AuditEvent, RuntimeConfig, RuntimeKernel, SchemaValidationRequest},
+    kernel::{AuditEvent, RuntimeConfig, RuntimeKernel},
     policy::{CommandInvocation, PermissionLevel, ResourceSet, RuntimeOperationRequest},
 };
 use serde::Deserialize;
@@ -35,16 +35,7 @@ struct JsonRpcRequest {
 #[derive(Debug, Deserialize)]
 struct InitializeParams {
     repo_root: PathBuf,
-    schema_path: PathBuf,
     reasonix_executable: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ValidateSchemaParams {
-    task_id: String,
-    request_id: Option<String>,
-    expected_schema: String,
-    payload: Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,7 +124,6 @@ impl Worker {
     fn dispatch(&mut self, method: &str, params: Value, id: &Value) -> Result<Value, JsonRpcError> {
         match method {
             "runtime.initialize" => self.initialize(params),
-            "runtime.validate_schema" => self.validate_schema(params, id),
             "runtime.evaluate_operation" => self.evaluate_operation(params, id),
             "runtime.write_audit" => self.write_audit(params),
             "runtime.shutdown" => Ok(json!({ "shutdown": true })),
@@ -146,26 +136,11 @@ impl Worker {
             serde_json::from_value(params).map_err(|_| invalid_params())?;
         let kernel = RuntimeKernel::initialize(RuntimeConfig {
             repo_root: params.repo_root,
-            schema_path: params.schema_path,
             reasonix_executable: params.reasonix_executable,
         })
         .map_err(|_| runtime_unavailable())?;
         self.kernel = Some(kernel);
         Ok(json!({ "initialized": true }))
-    }
-
-    fn validate_schema(&self, params: Value, id: &Value) -> Result<Value, JsonRpcError> {
-        let params: ValidateSchemaParams =
-            serde_json::from_value(params).map_err(|_| invalid_params())?;
-        let request_id = params.request_id.or_else(|| request_id_from_jsonrpc_id(id));
-        let kernel = self.kernel.as_ref().ok_or_else(runtime_unavailable)?;
-        let result = kernel.validate_schema(SchemaValidationRequest {
-            task_id: params.task_id.clone(),
-            request_id: request_id.clone(),
-            expected_schema: params.expected_schema,
-            payload: params.payload,
-        });
-        Ok(result.to_payload(&params.task_id, request_id.as_deref()))
     }
 
     fn evaluate_operation(&mut self, params: Value, id: &Value) -> Result<Value, JsonRpcError> {

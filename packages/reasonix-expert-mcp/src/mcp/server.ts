@@ -4,7 +4,7 @@ import type { Readable, Writable } from "node:stream";
 import { loadServerConfig, type ServerConfig } from "../config";
 import { ReasonixProcessRunner } from "../reasonix/runner";
 import { RuntimeWorkerClient } from "../worker/client";
-import { createReasonixToolsAdapter } from "./tools";
+import { createReasonixToolsAdapter } from "./adapter";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -72,7 +72,6 @@ async function startMcpServer(
   try {
     await runtime.call("runtime.initialize", {
       repo_root: config.repoRoot,
-      schema_path: config.schemaPath,
       reasonix_executable: config.reasonixCommand[0],
     });
   } catch (error) {

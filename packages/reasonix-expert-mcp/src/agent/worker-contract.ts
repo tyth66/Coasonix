@@ -277,7 +277,25 @@ function parseArgs(argv: string[]) {
 }
 
 if (import.meta.main) {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(`Usage: bun run conformance:agent-worker [options]
+
+Validate a backend agent worker against the review-diff stdio contract.
+
+Options:
+  --command-json <json>  Worker command as JSON string array (default: repo-local mock worker)
+  --timeout-ms <ms>      Worker timeout in milliseconds (default: 1000)
+
+Examples:
+  bun run conformance:agent-worker
+  bun run conformance:agent-worker --command-json '["reasonix-cli","review-diff"]'
+  bun run conformance:agent-worker --command-json '["mimocode-cli","review-diff"]' --timeout-ms 5000
+`);
+    process.exit(0);
+  }
+
+  const args = parseArgs(argv);
   const repoRoot = String(args.repoRoot ?? resolve(import.meta.dir, "../../../.."));
   const command = args.commandJson
     ? (JSON.parse(String(args.commandJson)) as string[])

@@ -3,12 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { createReasonixToolsAdapter } from "../mcp/tools";
+import { createReasonixToolsAdapter } from "../mcp/adapter";
 import { RuntimeWorkerClient } from "../worker/client";
 import { ReasonixProcessRunner } from "./runner";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
-const schemaPath = join(repoRoot, "schemas/coasonix-v1.schema.json");
 const clients: RuntimeWorkerClient[] = [];
 
 afterEach(async () => {
@@ -16,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("mock Reasonix review_diff vertical slice", () => {
-  test("success returns structuredContent through Rust validation", async () => {
+  test("success returns structuredContent through runtime policy gate", async () => {
     const result = await runVerticalSlice("success");
 
     expect(result.isError).toBe(false);
@@ -37,14 +36,14 @@ describe("mock Reasonix review_diff vertical slice", () => {
 
   test.each([
     ["timeout", "timeout"],
-    ["malformed-json", "reasonix_failed"],
-    ["multiple-json", "reasonix_failed"],
-    ["nonzero-exit", "reasonix_failed"],
-    ["stderr-only-failure", "reasonix_failed"],
-    ["schema-mismatch", "schema_validation_failed"],
-    ["wrong-task-id", "schema_validation_failed"],
-    ["wrong-request-id", "schema_validation_failed"],
-    ["invalid-confidence", "schema_validation_failed"],
+    ["malformed-json", "worker_malformed_json"],
+    ["multiple-json", "worker_malformed_json"],
+    ["nonzero-exit", "worker_nonzero_exit"],
+    ["stderr-only-failure", "worker_nonzero_exit"],
+    ["schema-mismatch", "worker_schema_invalid"],
+    ["wrong-task-id", "worker_identity_mismatch"],
+    ["wrong-request-id", "worker_identity_mismatch"],
+    ["invalid-confidence", "worker_schema_invalid"],
   ])("%s returns isError true without trusted structuredContent", async (mode, status) => {
     const result = await runVerticalSlice(mode);
 
@@ -75,7 +74,7 @@ describe("mock Reasonix review_diff vertical slice", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("permission_denied");
+    expect(result.content[0].text).toContain("runtime_policy_denied");
     expect(existsSync(marker)).toBe(false);
   });
 });
@@ -110,7 +109,6 @@ async function startRuntimeWorker(repo: string): Promise<RuntimeWorkerClient> {
   clients.push(client);
   await client.call("runtime.initialize", {
     repo_root: repo,
-    schema_path: schemaPath,
     reasonix_executable: "reasonix",
   });
   return client;

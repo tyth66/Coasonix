@@ -30,7 +30,7 @@ describe("Codex MCP setup", () => {
     expect(command.args).toContain("start:mcp");
     expect(command.args).toContain(`--cwd=${resolve(repoRoot, "packages/reasonix-expert-mcp")}`);
     expect(command.args).toContain("COASONIX_REPO_ROOT=D:\\work\\target-repo");
-    expect(command.args).toContain(`COASONIX_SCHEMA_PATH=${resolve(repoRoot, "schemas/coasonix-v1.schema.json")}`);
+    expect(command.args.join("\n")).not.toContain("COASONIX_SCHEMA_PATH");
     expect(command.args).toContain(
       `COASONIX_RUNTIME_WORKER=${resolve(repoRoot, "target/debug", runtimeWorkerName)}`,
     );
@@ -40,6 +40,55 @@ describe("Codex MCP setup", () => {
     expect(workerArgv[1]).toBe("review-diff");
     expect(existsSync(workerArgv[0])).toBe(true);
     expect(command.args.join(" ")).not.toContain("Temp");
+  });
+
+  test("conformance profile uses the same repo-local contract worker shape", () => {
+    const command = buildCodexMcpAddCommand({
+      repoRoot,
+      targetRepo: "D:\\work\\target-repo",
+      codexCommand: "codex",
+      bunCommand: "bun",
+      profile: "conformance",
+    });
+
+    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_REASONIX_COMMAND_JSON="));
+    const workerArgv = JSON.parse(workerEnv!.replace("COASONIX_REASONIX_COMMAND_JSON=", ""));
+    expect(workerArgv[0]).toContain(mockWorkerName);
+    expect(workerArgv[1]).toBe("review-diff");
+    expect(command.args).toContain("COASONIX_REASONIX_TIMEOUT_MS=10000");
+  });
+
+  test("reasonix-cli profile requires explicit backend command JSON", () => {
+    expect(() =>
+      buildCodexMcpAddCommand({
+        repoRoot,
+        targetRepo: "D:\\work\\target-repo",
+        codexCommand: "codex",
+        bunCommand: "bun",
+        profile: "reasonix-cli",
+        env: {},
+      }),
+    ).toThrow("backend_not_configured");
+  });
+
+  test("reasonix-cli profile uses explicit backend command JSON without changing runtime startup", () => {
+    const command = buildCodexMcpAddCommand({
+      repoRoot,
+      targetRepo: "D:\\work\\target-repo",
+      codexCommand: "codex",
+      bunCommand: "bun",
+      profile: "reasonix-cli",
+      env: { COASONIX_REASONIX_CLI_COMMAND_JSON: '["reasonix-cli","review-diff"]' },
+    });
+
+    const workerEnv = command.args.find((arg) => arg.startsWith("COASONIX_REASONIX_COMMAND_JSON="));
+    expect(JSON.parse(workerEnv!.replace("COASONIX_REASONIX_COMMAND_JSON=", ""))).toEqual([
+      "reasonix-cli",
+      "review-diff",
+    ]);
+    expect(command.args).toContain("COASONIX_REASONIX_TIMEOUT_MS=10000");
+    expect(command.args).toContain("start:mcp");
+    expect(command.args).toContain("--silent");
   });
 
   test("runs codex mcp add through the injected runner", async () => {
@@ -168,5 +217,25 @@ describe("Codex MCP setup", () => {
       request_id: "REQ-setup-worker",
       status: "ok",
     });
+  });
+
+  test("--help prints usage and exits zero", async () => {
+    const child = Bun.spawn([process.execPath, "packages/reasonix-expert-mcp/src/codex/setup.ts", "--help"], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("Usage:");
+    expect(stdout).toContain("--target-repo");
+    expect(stdout).toContain("--profile");
   });
 });

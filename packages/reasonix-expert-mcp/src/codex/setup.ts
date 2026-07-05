@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-export type BackendProfile = "mock";
+import {
+  resolveBackendProfile,
+  type BackendProfile,
+  type BackendProfileEnvironment,
+} from "../agent/backend-profile";
+
+export type { BackendProfile } from "../agent/backend-profile";
 
 export interface CommandInvocation {
   command: string;
@@ -20,6 +26,7 @@ export interface SetupOptions {
   codexCommand?: string;
   bunCommand?: string;
   profile?: BackendProfile;
+  env?: BackendProfileEnvironment;
   buildRuntimeWorker?: boolean;
   verifyRegistration?: boolean;
   run?: (command: string, args: string[], options?: { cwd?: string }) => Promise<CommandResult>;
@@ -34,14 +41,17 @@ export interface SetupResult {
 export function buildCodexMcpAddCommand(options: SetupOptions): CommandInvocation {
   const repoRoot = resolve(options.repoRoot);
   const packageRoot = resolve(repoRoot, "packages/reasonix-expert-mcp");
-  const schemaPath = resolve(repoRoot, "schemas/coasonix-v1.schema.json");
   const runtimeWorker = resolve(
     repoRoot,
     process.platform === "win32"
       ? "target/debug/coasonix-runtime-worker.exe"
       : "target/debug/coasonix-runtime-worker",
   );
-  const reasonixCommand = workerCommandForProfile(repoRoot, options.profile ?? "mock");
+  const backend = resolveBackendProfile({
+    profile: options.profile ?? "mock",
+    repoRoot,
+    env: options.env,
+  });
 
   return {
     command: options.codexCommand ?? "codex",
@@ -52,11 +62,11 @@ export function buildCodexMcpAddCommand(options: SetupOptions): CommandInvocatio
       "--env",
       `COASONIX_REPO_ROOT=${resolve(options.targetRepo)}`,
       "--env",
-      `COASONIX_SCHEMA_PATH=${schemaPath}`,
-      "--env",
       `COASONIX_RUNTIME_WORKER=${runtimeWorker}`,
       "--env",
-      `COASONIX_REASONIX_COMMAND_JSON=${JSON.stringify(reasonixCommand)}`,
+      `COASONIX_REASONIX_COMMAND_JSON=${JSON.stringify(backend.command)}`,
+      "--env",
+      `COASONIX_REASONIX_TIMEOUT_MS=${backend.timeoutMs}`,
       "--",
       options.bunCommand ?? process.execPath,
       "run",
@@ -85,19 +95,6 @@ export async function setupCodexMcp(options: SetupOptions): Promise<SetupResult>
     stdout: result.stdout,
     stderr: result.stderr,
   };
-}
-
-function workerCommandForProfile(repoRoot: string, profile: BackendProfile): string[] {
-  switch (profile) {
-    case "mock":
-      return [
-        resolve(
-          repoRoot,
-          process.platform === "win32" ? "bin/coasonix-mock-worker.cmd" : "bin/coasonix-mock-worker",
-        ),
-        "review-diff",
-      ];
-  }
 }
 
 async function verifyCodexRegistration(
@@ -180,7 +177,27 @@ function parseArgs(argv: string[]) {
 }
 
 if (import.meta.main) {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(`Usage: bun run setup:codex-mcp [options]
+
+Register Coasonix as a Codex MCP server.
+
+Options:
+  --repo-root <path>     Coasonix repository root (default: auto-detect)
+  --target-repo <path>   Target repository to register Coasonix for
+  --profile <name>       Backend profile: mock (default), conformance, reasonix-cli, mimocode-cli
+  --codex-command <cmd>  Codex CLI command (default: codex)
+  --bun-command <cmd>    Bun executable path (default: auto-detect)
+
+Example:
+  bun run setup:codex-mcp --target-repo D:\\work\\my-project
+  bun run setup:codex-mcp --target-repo D:\\work\\my-project --profile conformance
+`);
+    process.exit(0);
+  }
+
+  const args = parseArgs(argv);
   const repoRoot = String(args.repoRoot ?? resolve(import.meta.dir, "../../../.."));
   const targetRepo = String(args.targetRepo ?? process.cwd());
   const profile = String(args.profile ?? "mock") as BackendProfile;

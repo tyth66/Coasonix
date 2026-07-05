@@ -20,6 +20,21 @@ describe("Codex-facing error taxonomy", () => {
     expect(errorLayerForCode(ERROR_CODES.CONFIG_MISSING)).toBe("config");
   });
 
+  test("prefix-matches runtime_* and worker_* codes from the JSON-RPC bridge", () => {
+    // RuntimeWorkerError codes coming through the JSON-RPC bridge
+    expect(errorLayerForCode("runtime_state_denied")).toBe("runtime");
+    expect(errorLayerForCode("runtime_storage_error")).toBe("runtime");
+    expect(errorLayerForCode("runtime_approval_required")).toBe("runtime");
+    expect(errorLayerForCode("runtime_budget_exceeded")).toBe("runtime");
+    expect(errorLayerForCode("runtime_snapshot_mismatch")).toBe("runtime");
+    expect(errorLayerForCode("runtime_unknown_operation")).toBe("runtime");
+    expect(errorLayerForCode("runtime_internal_error")).toBe("runtime");
+    // Worker prefix matching
+    expect(errorLayerForCode("worker_identity_mismatch")).toBe("worker");
+    // Unknown codes fall back to worker
+    expect(errorLayerForCode("unknown_code")).toBe("worker");
+  });
+
   test("healthcheck reports Codex registration failures with a codex layer", async () => {
     const report = await healthCodexMcp({
       repoRoot: process.cwd(),
