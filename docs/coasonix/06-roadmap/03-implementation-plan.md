@@ -1,4 +1,17 @@
-# Implementation Plan and Critical Node Definitions
+# Implementation Plan and Critical Node Definitions (Design Reference)
+
+This document defines the 16 critical nodes that must be stable, auditable, and
+verifiable in any Coasonix implementation. These nodes are design boundaries,
+not implementation status claims.
+
+**For current implementation status, see:**
+- [../00-executive-summary.md](../00-executive-summary.md)
+- [../../implementation/review-diff-agent-collaboration-plan.md](../../implementation/review-diff-agent-collaboration-plan.md)
+
+**Nodes 1-8, 12 are implemented in the v1 Rust Runtime Core + TS MCP Adapter.**
+**Nodes 9-11, 13-16 are post-v1 design specifications.**
+
+---# Implementation Plan and Critical Node Definitions
 
 本文保留原“关键节点定义与工程规格”的完整语义，并将其作为实现计划的节点级检查清单。它定义 Coasonix 中必须稳定、可审计、可验证的关键节点。
 
@@ -901,62 +914,3 @@ reasonix_task_namespace_mismatch
 ```
 
 ---
-
-## 19. Cross-Node Completion Criteria
-
-The system is ready for implementation only when each node has:
-
-```text
-1. a named owner component
-2. explicit inputs
-3. explicit outputs
-4. status / verdict semantics
-5. failure modes
-6. hard requirements
-7. audit events
-8. verification evidence
-```
-
-Current document status:
-
-| Node | Defined Here | Needs JSON Schema File |
-|---|---:|---:|
-| N01 Task Intake and Task State | yes | yes |
-| N02 Codex Primary Control | yes | no |
-| N03 Context Projector | yes | yes |
-| N04 MCP Session and Transport | yes | no |
-| N05 Tool and Schema Registry | yes | yes |
-| N06 Wrapper Input Gate | yes | no |
-| N07 Reasonix Execution Gate | yes | no |
-| N08 Output Normalization Gate | yes | yes |
-| N09 Codex Decision Gate | yes | yes |
-| N10 Patch Safety Checker | yes | yes |
-| N11 Verification Gate | yes | yes |
-| N12 Audit Event Model | yes | yes |
-| N13 Loop and Budget Limiter | yes | no |
-| N14 Human Approval Gate | yes | yes |
-| N15 Performance Review Gate | yes | yes |
-| N16 Reasonix Project Controller and Session Router | yes | no |
-
-## 20. Reassessment Inputs
-
-The framework reassessment must evaluate:
-
-```text
-1. whether Codex remains the sole final authority
-2. whether every Reasonix path crosses Wrapper gates
-3. whether every output is schema-validated
-4. whether every patch path crosses Patch Safety Checker
-5. whether every accepted recommendation crosses Verification Gate
-6. whether every high-risk branch crosses Human Approval Gate
-7. whether every important transition emits audit events
-8. whether context projection is minimal, explicit, and reproducible
-9. whether performance claims are evidence-gated
-10. whether budget limits prevent automatic loops
-11. whether Reasonix Project Controller is shared across compatible Codex sessions
-12. whether task namespace and snapshot mismatches fail closed
-13. whether session lane reuse is cache-only and never hidden memory
-14. whether different project boundaries isolate sessions, task state, artifacts, result cache, patch proposals, context projections, audit namespace, and permission profile
-15. whether Reasonix memory/history is limited to hypothesis input and never treated as verification evidence
-16. whether Codex invokes Reasonix capabilities only, not internal agents
-```

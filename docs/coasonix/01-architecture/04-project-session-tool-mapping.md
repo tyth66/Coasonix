@@ -212,7 +212,7 @@ Rules:
 
 ```text
 1. Different Coasonix tasks under the same project MUST use separate task namespaces.
-2. Every Reasonix output MUST be bound to task_id, request_id, snapshot_id, lane, schema_version, and base_revision.
+2. Every Coasonix result artifact and audit record MUST be bound to task_id, request_id, snapshot_id, lane, and base_revision. The Reasonix review payload itself should contain review information only.
 3. No result from one task namespace may be consumed by another task unless Codex explicitly projects it as an artifact.
 4. Result artifacts MUST be written under task_id/request_id scoped paths.
 ```
@@ -596,7 +596,7 @@ Rules:
 ```text
 1. Reasonix session memory is never an authoritative source of task state.
 2. Every cross-tool dependency must appear in task_state or artifact paths.
-3. Every result must include request_id and validate against output_schema.
+3. Every Coasonix result artifact must include request_id and map to the expected internal output contract; the Reasonix review payload remains review-only.
 4. Codex performs merge, conflict handling, and final decision.
 5. Hidden session continuity may improve cache locality but must not change correctness semantics.
 ```

@@ -1,110 +1,75 @@
-# Schema Enforcement
+# Schema Contract Testing
 
-Schema Enforcement Layer validates all structured inputs and outputs against the canonical registry:
+Current v1 does not run a Runtime Schema Enforcement Layer on the architecture
+path. The schema file is retained as a test contract fixture for the active
+Reasonix review tool:
 
 ```text
 ../../../schemas/coasonix-v1.schema.json
 ```
 
-This document owns runtime schema enforcement behavior. Version evolution rules live in `../05-versioning/01-schema-contract-and-versioning.md`.
+Version evolution rules live in `../05-versioning/01-schema-contract-and-versioning.md`.
 
 ## 1. Responsibilities
 
 ```text
-input validation
-output validation
+test-time input contract validation
+test-time output contract validation
 schema_version matching
 strict additionalProperties handling
-error_result_v1 shaping
-compatibility shim decision
-schema error reporting
+duplicate-key rejection tests
+canonical JSON/hash support
 ```
 
 ## 2. Validation Flow
 
 ```text
-operation request
--> validate request schema
--> validate expected payload schema name
--> execute only when Runtime decision allows
--> validate result schema
--> verify returned schema_version equals requested output_schema
--> emit schema_validation_result_v1 or fail closed
+schema contract fixture
+-> validate review_diff_input_v1 in tests
+-> validate review_result_v1 in tests
+-> reject duplicate JSON keys in tests
 ```
 
-## 3. API Shape
+## 3. Runtime Shape
 
-Request example:
-
-```json
-{
-  "schema_version": "schema_validation_request_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "expected_schema": "performance_review_v1",
-  "payload": {}
-}
-```
-
-Result example:
-
-```json
-{
-  "schema_version": "schema_validation_result_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "expected_schema": "performance_review_v1",
-  "valid": false,
-  "errors": [
-    {
-      "path": "/confidence",
-      "message": "must be <= 1"
-    }
-  ]
-}
-```
+Runtime no longer exposes `runtime.validate_schema` in v1. The MCP adapter
+performs a narrow local `review_result_v1` contract check before returning
+`structuredContent`.
 
 ## 4. Hard Requirements
 
 ```text
 1. Invalid tool input blocks tools/call.
 2. Invalid Reasonix output blocks Codex decision.
-3. Invalid error result is fatal wrapper error.
-4. output_schema must match returned schema_version.
-5. Unknown schema_version fails unless explicit shim exists.
-6. Shim must emit schema_shim_applied audit event.
-7. Wrapper must not repair semantically invalid Reasonix output.
+3. Runtime startup must not require a schema path.
+4. Coasonix wrapper metadata must remain internally consistent when output_schema/schema_version metadata is used.
+5. Unknown review payload shape fails unless an explicit compatibility path exists.
+6. Wrapper must not repair semantically invalid Reasonix output.
 ```
 
 ## 5. Fail-Closed Cases
 
 ```text
-missing task_id
-request_id mismatch
+missing Coasonix internal request identity
 confidence outside 0..1
-unknown schema_version
+unknown review payload shape
 unexpected top-level field
-patch proposal without files_changed
-performance_review without benchmark_plan
-invalid error_result_v1
+review output missing required fields
 ```
 
 ## 6. Coverage Status
 
-The canonical schema registry defines both request and result objects for v1
-tool input, schema evaluation, and policy evaluation:
+The current schema fixture defines only the active v1 Reasonix review input and
+output contracts:
 
 ```text
 review_diff_input_v1
-schema_validation_request_v1
-schema_validation_result_v1
-policy_evaluation_request_v1
-policy_evaluation_result_v1
+review_result_v1
 ```
 
 Architecture impact:
 
 ```text
-No architecture change. This closes a machine-contract gap so Rust can validate
-request and result envelopes through the same root registry.
+The architecture path intentionally stays schema-free at Runtime startup; the
+fixture is for regression tests and contract documentation.
 ```

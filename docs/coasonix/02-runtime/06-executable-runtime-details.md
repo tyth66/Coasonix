@@ -1,25 +1,25 @@
 # Executable Runtime Details
 
-This document closes the gap between policy text and an executable Runtime
-Kernel. It defines deterministic parsing, canonicalization, matching, storage,
-and evidence rules that implementations must use when converting Coasonix
-specifications into runtime gates.
+This document defines deterministic parsing, canonicalization, matching, storage,
+and evidence rules that the Runtime Kernel uses for safety enforcement.
+
+**Implementation status**: Sections 1-5, 7 are implemented in the Rust Runtime
+Core. Sections 6, 8-11 are post-v1 design specifications. Section 12 is a
+conformance test matrix for post-v1 gates.
 
 The rules here refine, but do not replace:
-
-```text
-01-global-task-state-machine.md
-02-runtime-enforcement-layer.md
-03-policy-engine.md
-04-schema-enforcement.md
-05-observability-contract.md
-../03-reasonix/03-cache-engineering-model.md
-../04-patch-and-verification/*
-../../../schemas/coasonix-v1.schema.json
-```
+- `01-global-task-state-machine.md` (implemented)
+- `02-runtime-enforcement-layer.md` (implemented: state + policy engines)
+- `03-policy-engine.md` (implemented)
+- `04-schema-enforcement.md` (implemented in schema/mod.rs)
+- `05-observability-contract.md`
+- `../03-reasonix/03-cache-engineering-model.md` (post-v1)
+- `../04-patch-and-verification/*` (post-v1)
+- `../../../schemas/coasonix-v1.schema.json` (active fixture)
 
 If this document conflicts with a safety rule, the stricter rule wins.
 
+---
 ## 1. Runtime Canonicalization
 
 Runtime decisions must be based on canonical inputs. The Runtime Kernel must

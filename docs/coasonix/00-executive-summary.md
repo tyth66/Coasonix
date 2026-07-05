@@ -1,72 +1,84 @@
 # Executive Summary
-
-Coasonix is a Codex-centered expert delegation runtime for calling Reasonix as a controlled expert system. The core model is:
+The current implemented state and forward plan.
 
 ```text
-Codex = primary controller, orchestrator, executor, and final decision maker
-Reasonix = DeepSeek cache-first expert multi-agent system
-reasonix-expert = TypeScript MCP Adapter + managed Rust Runtime Worker
-same project = shared Project Controller + isolated task namespaces + lane sessions
-different project = isolated Project Controller and project-scoped state/cache/policy
+Codex   = assigns tasks, owns workspace execution, and makes final decisions
+Coasonix = safely translates protocol, gates side effects, and records audit evidence
+Reasonix = performs the delegated expert task
+Codex   = consumes the result and decides what to do next
 ```
 
-## Current Status
+## Current Product Boundary
+
+One tool only:
 
 ```text
-Deterministic Multi-Agent Runtime Spec: complete
-Runtime Enforcement Layer design: complete
-Global Runtime / Project Controller isolation / Session Pool / session lane mapping: complete
-MVP engineering defaults: complete
-v1 technology baseline: Rust 2024 core, Bun ESM adapter, JSON-RPC stdio worker, SQLite persistence
-v1 MVP implementation: complete through M8, ending at mock reasonix.review_diff vertical slice
-Post-v1 patch/autonomous write operation: blocked until patch safety, approval, and verification gates are implemented
+reasonix.review_diff
 ```
 
-## MVP Defaults
+The intended behavior is simple:
 
 ```text
-1. Local single-machine STDIO transport.
-2. TypeScript `reasonix-expert` MCP Adapter manages one repo-local Rust Runtime Worker.
-3. One Coasonix task should use one isolated git worktree by default.
-4. Same-worktree write operations are serialized.
-5. Reasonix session lanes are task-scoped: session_key includes task_id.
-6. Reasonix project memory may generate hypotheses, not verification evidence.
-7. v1 exposes `reasonix.review_diff` only; patch proposal remains disabled until
-   patch safety gates and conformance tests exist.
-8. Remote Reasonix worker / shared Gateway is deferred to a later deployment profile.
+Codex asks for a diff review
+Coasonix checks whether the call is safe and well-formed
+Reasonix reviews the diff and returns only review information
+Codex decides whether to act on that review
 ```
 
-## Safety Boundary
+Reasonix must not return Coasonix runtime state, schema validation payloads,
+worker diagnostics, backend profile data, task routing metadata, or MCP
+transport details. Those are Coasonix internals.
 
-Reasonix output is advisory. Every Reasonix result must be schema-valid before Codex can consider it. Patch proposals remain data until Codex decision, Patch Safety Checker, Patch Transaction, and Verification Gate allow progress.
+## Implementation Status
 
-The v1 runtime now implements the enforceable read-only review slice: schema validation, task state checks, policy/path/shell gates, append-only audit persistence, a JSON-RPC stdio worker, a TypeScript worker client, and a `reasonix.review_diff` adapter path that invokes a mock Reasonix process only after Rust allows the operation. Autonomous patch operation remains blocked until patch safety, approval, patch transaction, and verification gates are implemented and tested.
-
-## Implementation Entry Points
+### Completed
 
 ```text
-Wrapper implementer:
-  01-architecture/02-communication-and-mcp.md
-  03-reasonix/01-tool-contracts-and-wrapper.md
-  02-runtime/02-runtime-enforcement-layer.md
+MCP registration/setup                   (codex/setup.ts, codex/health.ts)
+MCP stdio server                         (mcp/server.ts)
+inline tools/list inputSchema           (mcp/tools.ts)
+Rust pre-Reasonix runtime gate           (crates/coasonix-runtime-core)
+  - State engine (Created to Running to Completed/Failed)
+  - Policy engine (operation, permission, path, argv, network)
+  - SQLite append-only audit (10 tables, WAL, FK)
+  - JSON Schema validation + duplicate-key detection (schema/mod.rs)
+Rust JSON-RPC stdio Runtime Worker       (crates/coasonix-runtime-worker)
+TypeScript Runtime Worker client         (worker/client.ts)
+mock review_diff vertical slice          (reasonix/mock-worker.ts)
+healthcheck / conformance / error taxonomy / backend profiles
+```
 
-Runtime implementer:
-  02-runtime/01-global-task-state-machine.md
-  02-runtime/02-runtime-enforcement-layer.md
-  02-runtime/03-policy-engine.md
-  02-runtime/04-schema-enforcement.md
+### Active Transition
 
-Reasonix integration implementer:
-  01-architecture/04-project-session-tool-mapping.md
-  03-reasonix/02-reasonix-concurrency-model.md
-  03-reasonix/03-cache-engineering-model.md
+The current review_result_v1 contract still includes system envelope fields
+(schema_version, task_id, request_id, status) that belong in Coasonix
+wrapper metadata, not in Reasonix review answer. The active plan moves
+these fields out of the Reasonix result payload.
 
-Patch/verification implementer:
-  04-patch-and-verification/*
+### Out of Scope
 
-Implemented v1 code:
-  ../../crates/coasonix-runtime-core/
-  ../../crates/coasonix-runtime-worker/
-  ../../packages/reasonix-expert-mcp/
-  ../implementation/v1-mvp-execution-plan.md
+```text
+additional tools beyond review_diff
+patch application / write autonomy
+human approval UI
+remote transport / HTTP / daemon
+real (non-mock) backend bridge
+```
+
+## Forward Plan
+
+```text
+../implementation/review-diff-agent-collaboration-plan.md
+```
+
+Historical implementation evidence is archived under that same directory.
+
+## Verification
+
+```powershell
+cargo test --workspace
+bun test
+python -m json.tool schemas/coasonix-v1.schema.json > $null
+cargo fmt --all -- --check
+git diff --check
 ```

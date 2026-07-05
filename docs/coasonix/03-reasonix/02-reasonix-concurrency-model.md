@@ -134,7 +134,7 @@ Rules:
 
 ```text
 1. A result from one task namespace cannot be consumed by another task unless Codex explicitly projects it.
-2. Every Reasonix output must include task_id, request_id, snapshot_id, lane, schema_version, and base_revision in structured content or metadata.
+2. Every Coasonix result artifact and audit record must include task_id, request_id, snapshot_id, lane, and base_revision. Reasonix review content should not be forced to carry routing metadata.
 3. Codex merge must reject task_id, request_id, snapshot_id, lane, or base_revision mismatches.
 ```
 

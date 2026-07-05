@@ -107,13 +107,14 @@ RuntimeDecisionValue
 TaskStateValue
 ```
 
-These types map to the root schema registry when the corresponding schema exists
-and to internal runtime request shapes when the registry does not yet expose a
-standalone top-level schema.
+These types are Rust runtime-owned. The root JSON schema fixture currently
+tracks only the active Reasonix review_diff input/output contract used in tests.
 
 ## 4. JSON Value Reasonix Payloads
 
-Reasonix result payloads should initially enter Rust as `serde_json::Value`.
+Reasonix result payloads do not enter Rust for schema validation in the current
+v1 architecture path. The TypeScript adapter checks the result contract before
+returning MCP `structuredContent`.
 
 Payloads kept as JSON values in v1:
 
@@ -131,9 +132,8 @@ Rules:
 
 ```text
 1. Payloads are parsed with duplicate-key rejection before validation.
-2. Payloads are validated against the declared schema_version.
-3. Rust may inspect common safety fields such as schema_version, task_id,
-   request_id, status, verdict, confidence, files_changed, and metadata.
+2. Reasonix review payloads are validated against the active review-data contract.
+3. Rust owns pre-delegation safety gates. Review-result shape checks stay in the adapter unless a future safety requirement proves otherwise.
 4. Rust must not rely on unchecked ad hoc payload fields for allow decisions.
 5. Add a strong type for a Reasonix payload only when Rust needs to inspect that
    schema's fields for runtime safety or transaction semantics.
@@ -303,12 +303,11 @@ RuntimeKernel::write_audit
 `transition_state` and `evaluate_policy` may be implemented as internal
 subroutines first, then exposed when tests require direct entry points.
 
-The first adapter vertical slice should call:
+The first adapter vertical slice calls:
 
 ```text
 runtime.initialize
 runtime.evaluate_operation
-runtime.validate_schema
 runtime.write_audit
 ```
 

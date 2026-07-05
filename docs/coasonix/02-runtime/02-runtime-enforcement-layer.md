@@ -536,7 +536,7 @@ With this layer specified:
 Design direction: complete
 Deterministic runtime spec: complete
 Runtime enforcement design: complete
-v1 runtime implementation: complete for Rust-gated read-only review_diff path
+v1 runtime implementation: complete for Rust pre-delegation-gated read-only review_diff path
 Autonomous patch operation: blocked until patch safety, approval, transaction, and verification gates exist
 ```
 
