@@ -162,7 +162,10 @@ function parseArgs(argv: string[]) {
     if (!arg.startsWith("--")) {
       continue;
     }
-    const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
+    const raw = arg.slice(2);
+    const separator = raw.indexOf("=");
+    const rawKey = separator >= 0 ? raw.slice(0, separator) : raw;
+    const inlineValue = separator >= 0 ? raw.slice(separator + 1) : undefined;
     const key = rawKey.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
     if (inlineValue !== undefined) {
       parsed[key] = inlineValue;

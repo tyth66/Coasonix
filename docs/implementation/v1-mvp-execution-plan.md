@@ -61,7 +61,8 @@ Reasonix, MimoCode, and other agents should enter later as backend bridges.
 | M10 | Official MCP SDK client compatibility | `packages/reasonix-expert-mcp/src/mcp/server.test.ts` |
 | M11 | Stable startup script and operator-facing environment contract | `packages/reasonix-expert-mcp/package.json`, `README.md` |
 | M12 | Codex MCP setup installer with mock backend profile, protocol-clean startup args, and post-add registration verification | `package.json`, `packages/reasonix-expert-mcp/src/codex/`, `packages/reasonix-expert-mcp/src/reasonix/mock-worker.ts`, `bin/coasonix-mock-worker*` |
-| M13+ | Codex MCP healthcheck and backend-neutral worker conformance | `docs/implementation/codex-side-gateway-roadmap.md` |
+| M13 | Codex MCP healthcheck with registration, server startup, runtime, tools/list, mock review, and shutdown diagnostics | `packages/reasonix-expert-mcp/src/codex/health.ts`, `packages/reasonix-expert-mcp/src/codex/health.test.ts`, `package.json` |
+| M14+ | Backend-neutral worker conformance | `docs/implementation/codex-side-gateway-roadmap.md` |
 
 Working v1 call path:
 
@@ -111,8 +112,28 @@ verifies codex mcp get coasonix and codex mcp list after registration
 ```
 
 The current setup profile is intentionally mock-only. Real Reasonix Desktop,
-MimoCode, or other agent bridges must wait for the M13 healthcheck and M14
-backend-neutral worker conformance contract.
+MimoCode, or other agent bridges must wait for the M14 backend-neutral worker
+conformance contract.
+
+Codex healthcheck command:
+
+```powershell
+bun run health:codex-mcp --target-repo D:\path\to\target-repo
+```
+
+The healthcheck command:
+
+```text
+checks codex mcp get coasonix and codex mcp list
+starts the MCP server with the same bun run --silent launch shape
+confirms initialize returns reasonix-expert-mcp serverInfo
+confirms runtime.initialize completed before the initialize response
+confirms tools/list returns exactly reasonix.review_diff
+parses stdout as JSON-RPC response frames only
+runs one mock review_diff call through Rust runtime gates
+classifies Codex, server startup, runtime worker, backend worker, and shutdown failures separately
+writes a concise operator report and exits nonzero when any check fails
+```
 
 Required environment:
 
@@ -244,6 +265,9 @@ start:mcp invocation is documented with Bun silent mode for protocol-clean stdou
 README documents the minimum runtime environment contract
 setup:codex-mcp builds/registers/verifies a Codex MCP entry with stable paths
 mock profile worker emits one review_result_v1 JSON object over stdout
+health:codex-mcp reports codex_mcp_not_registered separately from server_startup_failed
+health:codex-mcp reports runtime_unavailable separately from worker_nonzero_exit
+health:codex-mcp passes against the mock profile through the real MCP server process
 ```
 
 Repository verification command set:

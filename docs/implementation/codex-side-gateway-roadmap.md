@@ -123,6 +123,18 @@ Add a diagnostic command:
 bun run health:codex-mcp
 ```
 
+Current status:
+
+```text
+implemented
+root package exposes health:codex-mcp
+healthcheck checks Codex registration with codex mcp get/list
+healthcheck starts the MCP server with the same Bun silent startup shape
+healthcheck validates initialize, runtime.initialize, tools/list, stdout JSON-RPC framing, mock review_diff, and shutdown
+healthcheck returns nonzero when any check fails
+healthcheck distinguishes codex_mcp_not_registered, server_startup_failed, runtime_unavailable, and worker failure codes
+```
+
 The healthcheck should be independent of real Reasonix/MimoCode credentials. It
 should validate the Coasonix gateway itself:
 
@@ -145,6 +157,24 @@ healthcheck distinguishes Codex registration failure from server startup failure
 healthcheck distinguishes runtime worker failure from backend worker failure
 healthcheck writes a concise operator report
 ```
+
+Implemented entrypoints:
+
+```text
+package.json -> health:codex-mcp
+packages/reasonix-expert-mcp/src/codex/health.ts
+packages/reasonix-expert-mcp/src/codex/health.test.ts
+```
+
+Usage:
+
+```powershell
+bun run health:codex-mcp --target-repo D:\path\to\target-repo
+```
+
+The healthcheck still uses the mock backend profile by default. It does not
+validate Reasonix Desktop, MimoCode, credentials, or backend-specific bridge
+behavior. Those remain blocked behind M14 worker conformance.
 
 ## M14: Agent Worker Contract
 

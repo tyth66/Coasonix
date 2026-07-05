@@ -6,6 +6,7 @@
     "packages/reasonix-expert-mcp"
   ],
   "scripts": {
+    "health:codex-mcp": "bun packages/reasonix-expert-mcp/src/codex/health.ts",
     "setup:codex-mcp": "bun packages/reasonix-expert-mcp/src/codex/setup.ts",
     "test": "bun test"
   },

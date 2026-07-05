@@ -23,9 +23,9 @@ Runtime Enforcement Layer design: complete
 Global Runtime / Project Controller isolation / Session Pool / session lane mapping: complete
 MVP engineering defaults: complete
 v1 technology baseline: Rust 2024 core, Bun ESM adapter, JSON-RPC stdio worker, SQLite persistence
-v1 implementation blueprint: complete through M12
+v1 implementation blueprint: complete through M13
 v1 MVP implementation: complete for Rust-gated reasonix.review_diff through a runnable MCP stdio server
-Codex-side gateway productization: M12 setup:codex-mcp installer implemented with mock profile and registration verification
+Codex-side gateway productization: M12 setup installer and M13 healthcheck implemented with mock profile validation
 Safe autonomous patch operation: still blocked until patch safety, approval, and verification gates are implemented
 ```
 
@@ -46,8 +46,8 @@ Next implementation focus:
 
 [docs/implementation/codex-side-gateway-roadmap.md](docs/implementation/codex-side-gateway-roadmap.md)
 
-The next slice should add a Codex MCP healthcheck before adding Reasonix,
-MimoCode, or other backend bridges.
+The next slice should formalize the backend-neutral Agent Worker Contract before
+adding Reasonix, MimoCode, or other backend bridges.
 
 Install the Coasonix MCP server into Codex with the mock backend profile:
 
@@ -60,6 +60,19 @@ with `codex mcp add`, uses `bun run --silent` for protocol-clean MCP startup,
 and verifies the durable Codex registration with `codex mcp get coasonix` and
 `codex mcp list`. The default backend profile points at the repo-local mock
 worker, not at Reasonix Desktop.
+
+Run the Codex-side gateway healthcheck:
+
+```powershell
+bun run health:codex-mcp --target-repo D:\path\to\target-repo
+```
+
+The healthcheck validates Codex registration, starts the same protocol-clean MCP
+server launch shape, confirms `initialize` and `tools/list`, runs one mock
+`reasonix.review_diff` call through the Rust runtime gate, checks runtime
+shutdown, and writes a concise operator report. Failures are labeled by layer,
+including `codex_mcp_not_registered`, `server_startup_failed`,
+`runtime_unavailable`, and worker failure codes.
 
 Run the local MCP stdio server:
 
