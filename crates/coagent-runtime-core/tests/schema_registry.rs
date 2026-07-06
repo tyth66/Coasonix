@@ -9,16 +9,25 @@ fn schema_path() -> PathBuf {
 
 fn valid_review_result() -> serde_json::Value {
     json!({
-        "schema_version": "review_result_v1",
-        "task_id": "TASK-schema",
-        "request_id": "REQ-schema",
-        "status": "ok",
-        "verdict": "pass",
-        "summary": "No findings.",
-        "confidence": 0.91
+        "review": {
+            "verdict": "pass",
+            "summary": "No findings.",
+            "findings": [],
+            "tests_to_run": [],
+            "risks": [],
+            "assumptions": [],
+            "confidence": 0.91
+        },
+        "metadata": {
+            "schema_version": "review_result_v1",
+            "task_id": "TASK-schema",
+            "request_id": "REQ-schema",
+            "status": "ok",
+            "operation": "reasonix.review_diff",
+            "runtime_decision": "allow"
+        }
     })
 }
-
 fn valid_review_diff_input() -> serde_json::Value {
     json!({
         "schema_version": "review_diff_input_v1",
@@ -44,7 +53,7 @@ fn valid_review_diff_input() -> serde_json::Value {
 fn validates_review_result_v1_from_root_schema_registry() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
 
-    let result = registry.validate("review_result_v1", &valid_review_result());
+    let result = registry.validate("coagent_review_wrapper_v1", &valid_review_result());
 
     assert!(
         result.valid,
@@ -87,9 +96,9 @@ fn unknown_expected_schema_fails_closed() {
 fn rejects_schema_version_that_does_not_match_expected_schema() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
     let mut payload = valid_review_result();
-    payload["schema_version"] = json!("security_audit_v1");
+    payload["metadata"]["schema_version"] = json!("security_audit_v1");
 
-    let result = registry.validate("review_result_v1", &payload);
+    let result = registry.validate("coagent_review_wrapper_v1", &payload);
 
     assert!(!result.valid);
     assert!(
@@ -106,15 +115,15 @@ fn rejects_schema_version_that_does_not_match_expected_schema() {
 fn rejects_payload_valid_for_different_schema() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
 
-    let result = registry.validate("review_result_v1", &valid_review_diff_input());
+    let result = registry.validate("coagent_review_wrapper_v1", &valid_review_diff_input());
 
     assert!(!result.valid);
     assert!(
         result
             .errors
             .iter()
-            .any(|error| error.path.contains("schema_version")),
-        "expected schema_version mismatch error, got {:?}",
+            .any(|error| error.message.contains("review")),
+        "expected required field error, got {:?}",
         result.errors
     );
 }
@@ -142,9 +151,9 @@ fn rejects_review_diff_input_output_schema_mismatch() {
 fn rejects_confidence_outside_allowed_range() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
     let mut payload = valid_review_result();
-    payload["confidence"] = json!(1.1);
+    payload["review"]["confidence"] = json!(1.1);
 
-    let result = registry.validate("review_result_v1", &payload);
+    let result = registry.validate("coagent_review_wrapper_v1", &payload);
 
     assert!(!result.valid);
     assert!(
@@ -163,7 +172,7 @@ fn rejects_unexpected_top_level_field_when_schema_disallows_it() {
     let mut payload = valid_review_result();
     payload["unexpected"] = json!("not allowed");
 
-    let result = registry.validate("review_result_v1", &payload);
+    let result = registry.validate("coagent_review_wrapper_v1", &payload);
 
     assert!(!result.valid);
     assert!(
@@ -201,3 +210,5 @@ fn malformed_json_returns_schema_error_without_panic() {
 
     assert!(error.to_string().contains("invalid JSON"));
 }
+
+

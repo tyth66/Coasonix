@@ -1,97 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://coagent.local/schemas/coagent-v1.schema.json",
-  "title": "coagent v1 Schema Registry",
+  "title": "Coagent v1 Schema Registry",
   "type": "object",
   "$defs": {
-    "taskId": {
-      "type": "string",
-      "pattern": "^TASK-[A-Za-z0-9_-]+$"
-    },
-    "requestId": {
-      "type": "string",
-      "pattern": "^REQ-[A-Za-z0-9_-]+$"
-    },
-    "relativePath": {
-      "type": "string",
-      "minLength": 1,
-      "not": {
-        "anyOf": [
-          { "pattern": "^[A-Za-z]:[\\\\/]" },
-          { "pattern": "^/" },
-          { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" }
-        ]
-      }
-    },
-    "confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
-    },
-    "finding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "severity", "category", "issue", "evidence", "recommendation", "confidence"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "severity": {
-          "type": "string",
-          "enum": ["blocker", "major", "minor", "note"]
-        },
-        "category": { "type": "string", "minLength": 1 },
-        "file": { "$ref": "#/$defs/relativePath" },
-        "line": { "type": "integer", "minimum": 1 },
-        "issue": { "type": "string", "minLength": 1 },
-        "evidence": { "type": "string", "minLength": 1 },
-        "recommendation": { "type": "string" },
-        "confidence": { "$ref": "#/$defs/confidence" }
-      }
-    },
-    "metadata": {
-      "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "duration_ms": { "type": "integer", "minimum": 0 },
-        "files_read": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/relativePath" }
-        },
-        "tools_used": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "reasonix_runtime_version": { "type": "string" },
-        "cache_key": { "type": "string" },
-        "mcp_server_instance_id": { "type": "string" },
-        "worker_id": { "type": "string" },
-        "codex_session_id": { "type": "string" },
-        "task_namespace": { "type": "string" },
-        "tenant_id_or_user_id": { "type": "string" },
-        "repo_root_realpath": { "type": "string" },
-        "worktree_id": { "type": "string" },
-        "base_branch": { "type": "string" },
-        "snapshot_id": { "type": "string" },
-        "base_revision": { "type": "string" },
-        "lane": { "type": "string" },
-        "project_key_hash": { "type": "string" },
-        "session_key_hash": { "type": "string" },
-        "static_prefix_hash": { "type": "string" }
-      }
-    },
     "review_diff_input_v1": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["schema_version", "goal", "repo", "artifacts", "permission_level", "output_schema"],
+      "additionalProperties": false,
       "properties": {
         "schema_version": { "const": "review_diff_input_v1" },
-        "task_id": { "$ref": "#/$defs/taskId" },
-        "request_id": { "$ref": "#/$defs/requestId" },
+        "task_id": { "type": "string" },
+        "request_id": { "type": "string" },
         "mode": { "const": "review_diff" },
         "goal": { "type": "string", "minLength": 1 },
         "repo": {
           "type": "object",
-          "additionalProperties": false,
           "required": ["root"],
+          "additionalProperties": false,
           "properties": {
             "root": { "type": "string", "minLength": 1 },
             "base_branch": { "type": "string" },
@@ -100,83 +26,83 @@
         },
         "artifacts": {
           "type": "object",
-          "additionalProperties": false,
           "required": ["diff_path"],
+          "additionalProperties": false,
           "properties": {
-            "context_path": { "$ref": "#/$defs/relativePath" },
-            "diff_path": { "$ref": "#/$defs/relativePath" },
-            "test_log_path": { "$ref": "#/$defs/relativePath" },
-            "build_log_path": { "$ref": "#/$defs/relativePath" }
+            "diff_path": { "type": "string", "minLength": 1 },
+            "context_path": { "type": "string" },
+            "test_log_path": { "type": "string" },
+            "build_log_path": { "type": "string" }
           }
         },
-        "focus": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": []
-        },
-        "constraints": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": []
-        },
+        "focus": { "type": "array", "items": { "type": "string" } },
+        "constraints": { "type": "array", "items": { "type": "string" } },
         "budget": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "max_minutes": { "type": "integer", "minimum": 1 },
-            "max_steps": { "type": "integer", "minimum": 1 },
-            "max_output_chars": { "type": "integer", "minimum": 1 }
+            "max_output_chars": { "type": "integer", "minimum": 1 },
+            "max_steps": { "type": "integer", "minimum": 1 }
           }
         },
         "permission_level": { "const": "L1_DIFF_REVIEW" },
         "output_schema": { "const": "review_result_v1" }
       }
     },
-    "review_result_v1": {
+
+    "pure_review_result_v1": {
       "type": "object",
+      "required": ["verdict", "summary", "findings", "tests_to_run", "risks", "assumptions", "confidence"],
       "additionalProperties": false,
-      "required": ["schema_version", "task_id", "request_id", "status", "verdict", "summary", "confidence"],
       "properties": {
-        "schema_version": { "const": "review_result_v1" },
-        "task_id": { "$ref": "#/$defs/taskId" },
-        "request_id": { "$ref": "#/$defs/requestId" },
-        "status": {
-          "type": "string",
-          "enum": ["ok", "partial", "error", "timeout"]
-        },
-        "verdict": {
-          "type": "string",
-          "enum": ["pass", "needs_fix", "risky", "unknown", "not_applicable"]
-        },
-        "summary": { "type": "string" },
+        "verdict": { "type": "string", "enum": ["pass", "needs_fix", "risky", "unknown", "not_applicable"] },
+        "summary": { "type": "string", "minLength": 1 },
         "findings": {
           "type": "array",
-          "items": { "$ref": "#/$defs/finding" },
-          "default": []
+          "items": {
+            "type": "object",
+            "required": ["severity", "category", "issue", "confidence"],
+            "properties": {
+              "id": { "type": "string" },
+              "severity": { "type": "string", "enum": ["blocker", "major", "minor", "note"] },
+              "category": { "type": "string" },
+              "file": { "type": "string" },
+              "line": { "type": "integer" },
+              "issue": { "type": "string" },
+              "evidence": { "type": "string" },
+              "recommendation": { "type": "string" },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
         },
-        "tests_to_run": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": []
-        },
-        "assumptions": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": []
-        },
-        "risks": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": []
-        },
-        "confidence": { "$ref": "#/$defs/confidence" },
-        "metadata": { "$ref": "#/$defs/metadata" }
+        "tests_to_run": { "type": "array", "items": { "type": "string" } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+
+    "coagent_review_wrapper_v1": {
+      "type": "object",
+      "required": ["review", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "review": { "$ref": "#/$defs/pure_review_result_v1" },
+        "metadata": {
+          "type": "object",
+          "required": ["schema_version", "task_id", "request_id", "status", "operation", "runtime_decision"],
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": { "const": "review_result_v1" },
+            "task_id": { "type": "string" },
+            "request_id": { "type": "string" },
+            "status": { "type": "string", "enum": ["ok", "partial", "error"] },
+            "operation": { "type": "string" },
+            "runtime_decision": { "type": "string", "enum": ["allow", "deny", "require_approval", "retryable_error", "fatal_error"] }
+          }
+        }
       }
     }
-  },
-  "oneOf": [
-    { "$ref": "#/$defs/review_diff_input_v1" },
-    { "$ref": "#/$defs/review_result_v1" }
-  ]
+  }
 }
-

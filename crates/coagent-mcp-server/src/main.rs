@@ -43,8 +43,8 @@ impl CoagentServer {
             return Err(ErrorData::invalid_params(e.message, None));
         }
 
-        let task_id = input.task_id.clone().unwrap_or_else(|| "TASK-auto".into());
-        let request_id = input.request_id.clone().unwrap_or_else(|| "REQ-auto".into());
+        let task_id = input.task_id.clone().unwrap_or_else(|| format!("TASK-{}", uuid::Uuid::new_v4()));
+        let request_id = input.request_id.clone().unwrap_or_else(|| format!("REQ-{}", uuid::Uuid::new_v4()));
 
         // 2. Runtime gate (same-process call, no JSON-RPC)
         let read_paths: Vec<String> = [
@@ -74,12 +74,15 @@ impl CoagentServer {
         };
 
         if decision.decision != coagent_runtime_core::policy::RuntimeDecisionValue::Allow {
-            let _ = self.kernel.lock().await.fail_operation(
-                &task_id,
-                Some(&request_id),
-                "reasonix.review_diff",
-                "runtime_policy_denied",
-                &format!("{:?}", decision.reasons),
+            // Policy deny: write audit event without state transition
+            // (Created->Failed is illegal; deny happens pre-execution)
+            let _ = self.kernel.lock().await.write_audit(
+                coagent_runtime_core::kernel::AuditEvent {
+                    task_id: task_id.clone(),
+                    event_type: "runtime_policy_denied".into(),
+                    summary: format!("Policy denied: {:?}", decision.reasons),
+                    payload_json: serde_json::to_string(&decision.reasons).unwrap_or_default(),
+                },
             );
             let err_text = format!("runtime_policy_denied: {:?}", decision.reasons);
             return Ok(CallToolResult::error(vec![ContentBlock::text(err_text)]));
@@ -180,6 +183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+
 
 
 

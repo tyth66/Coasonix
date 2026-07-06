@@ -71,6 +71,11 @@ impl AcpSession {
 
     /// Send a session/prompt and collect the response.
     pub async fn send_prompt(&mut self, goal: &str, diff_path: &str) -> Result<PureReviewResult, ReasonixError> {
+        let timeout_ms: u64 = std::env::var("COAGENT_AGENT_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120_000);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         let id = self.next_request_id;
         self.next_request_id += 2;
 
@@ -82,7 +87,9 @@ impl AcpSession {
 
         let mut collected_text = String::new();
         loop {
-            let line = read_line(&mut self.reader).await?;
+            let line = tokio::time::timeout_at(deadline, read_line(&mut self.reader))
+                .await
+                .map_err(|_| ReasonixError::Timeout("ACP prompt timed out".into()))??;
             if line.is_empty() { continue; }
             let msg: serde_json::Value = serde_json::from_str(&line)
                 .map_err(|e| ReasonixError::Protocol(format!("invalid frame: {e}")))?;
@@ -190,6 +197,7 @@ pub enum ReasonixError {
     #[error("spawn: {0}")] Spawn(String),
     #[error("I/O: {0}")] Io(String),
     #[error("protocol: {0}")] Protocol(String),
+    #[error("timeout: {0}")] Timeout(String),
 }
 
 fn build_review_prompt(goal: &str, diff_path: &str) -> String {
@@ -221,3 +229,6 @@ fn extract_json(text: &str) -> Result<PureReviewResult, serde_json::Error> {
     }
     serde_json::from_str(text)
 }
+
+
+
