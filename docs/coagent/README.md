@@ -21,7 +21,7 @@ bun run --cwd=packages/reasonix-expert-mcp start:mcp
 ### Test
 
 ```powershell
-cargo test --workspace    # Rust: 62 pass (runtime-core, runtime-worker, mcp-server)
+cargo test --workspace    # Rust: 81 pass (3 ignored) (runtime-core, runtime-worker, mcp-server)
 bun test                  # TypeScript: 82 pass, 1 skip, 0 fail
 ```
 
@@ -48,3 +48,4 @@ packages/
 schemas/
   coagent-v1.schema.json    review_diff contract fixture
 ```
+

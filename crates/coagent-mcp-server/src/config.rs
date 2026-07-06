@@ -40,3 +40,19 @@ pub enum ConfigError {
 fn required(key: &str) -> Result<String, ConfigError> {
     std::env::var(key).map_err(|_| ConfigError::Missing(key.into()))
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn backend_id_mock_is_not_reasonix() {
+        // Pure unit test: no env mutation needed
+        assert_ne!(super::BackendId::Mock, super::BackendId::Reasonix);
+    }
+
+    #[test]
+    fn backend_id_clone_copy() {
+        let a = super::BackendId::Mock;
+        let b = a;
+        assert_eq!(a, b);
+    }
+}

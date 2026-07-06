@@ -62,7 +62,7 @@ patch / approval / autonomous write path:   out of scope
 ## Verification
 
 ```powershell
-cargo test --workspace    # 62 pass
+cargo test --workspace    # 81 pass (3 ignored: Reasonix integration tests)
 cargo build -p coagent-mcp-server
 cargo fmt --all -- --check
 ```
@@ -73,3 +73,4 @@ cargo fmt --all -- --check
 - [Runtime: State, Policy, Audit](docs/coagent/architecture/01-runtime.md)
 - [MCP Server (rmcp)](docs/coagent/architecture/02-mcp-server.md)
 - [Documentation Index](docs/coagent/README.md)
+
