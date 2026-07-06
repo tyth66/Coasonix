@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { RuntimeWorkerClient, RuntimeWorkerError } from "./client";
+import { RuntimeWorkerClient, RuntimeWorkerError } from "./RuntimeWorkerClient";
 import { encodeRequestFrame, parseResponseFrame } from "./protocol";
 
 const clients: RuntimeWorkerClient[] = [];

@@ -135,5 +135,3 @@ fn windows_case_folded_repo_path_is_still_repo_local() {
 
     assert!(normalized.starts_with(&repo));
 }
-
-

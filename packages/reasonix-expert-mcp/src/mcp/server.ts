@@ -2,9 +2,13 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
 import { loadServerConfig, type ServerConfig } from "../config";
-import { AgentProcessRunner } from "../agents/process-runner";
-import { RuntimeWorkerClient } from "../worker/client";
+import { ReasonixRunner } from "../backends/reasonix/ReasonixRunner";
+import { MockRunner } from "../backends/mock/MockRunner";
+import { RuntimeWorkerClient } from "../runtime/RuntimeWorkerClient";
 import { createReasonixToolsAdapter } from "./adapter";
+import type { AgentRunner } from "../backends/core/interfaces";
+
+// ---- Types ----
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -17,6 +21,23 @@ interface RunningServer {
   ready: Promise<void>;
   shutdown(): Promise<void>;
 }
+
+// ---- Backend registry ----
+
+function createBackendRunner(config: ServerConfig): AgentRunner {
+  switch (config.backend) {
+    case "reasonix":
+      return new ReasonixRunner({
+        model: config.reasonixModel,
+        cwd: config.repoRoot,
+        requestTimeoutMs: config.agentTimeoutMs,
+      });
+    case "mock":
+      return new MockRunner();
+  }
+}
+
+// ---- Public API ----
 
 export async function runServerFromEnv(): Promise<void> {
   const config = loadServerConfig();
@@ -33,6 +54,8 @@ export async function runMcpServer(
   await running.ready;
 }
 
+// ---- Internal ----
+
 async function startMcpServer(
   config: ServerConfig,
   input: Readable,
@@ -45,13 +68,16 @@ async function startMcpServer(
   });
   let shuttingDown = false;
 
+  const agentRunner = createBackendRunner(config);
+
   const shutdown = async () => {
-    if (shuttingDown) {
-      return;
-    }
+    if (shuttingDown) return;
     shuttingDown = true;
-    await runtime.shutdown().catch((error) => {
-      errorOutput.write(`runtime shutdown failed: ${formatError(error)}\n`);
+    await agentRunner.shutdown().catch((err) => {
+      errorOutput.write(`backend shutdown failed: ${formatError(err)}\n`);
+    });
+    await runtime.shutdown().catch((err) => {
+      errorOutput.write(`runtime shutdown failed: ${formatError(err)}\n`);
     });
   };
 
@@ -72,7 +98,6 @@ async function startMcpServer(
   try {
     await runtime.call("runtime.initialize", {
       repo_root: config.repoRoot,
-      agent_executable: config.agentCommand[0],
     });
   } catch (error) {
     await shutdown();
@@ -83,23 +108,16 @@ async function startMcpServer(
     initialized: true,
     runtime,
     agentCommand: config.agentCommand,
-    reasonix: new AgentProcessRunner({
-      command: config.agentCommand,
-      timeoutMs: config.agentTimeoutMs,
-    }),
+    agent: agentRunner,
   });
 
   const lineReader = createInterface({ input });
   const ready = (async () => {
     try {
       for await (const line of lineReader) {
-        if (!line.trim()) {
-          continue;
-        }
+        if (!line.trim()) continue;
         const response = await handleRequestLine(line, adapter);
-        if (response) {
-          output.write(`${JSON.stringify(response)}\n`);
-        }
+        if (response) output.write(`${JSON.stringify(response)}\n`);
       }
     } finally {
       await shutdown();
@@ -109,21 +127,20 @@ async function startMcpServer(
   return { ready, shutdown };
 }
 
-async function handleRequestLine(line: string, adapter: ReturnType<typeof createReasonixToolsAdapter>) {
+// ---- JSON-RPC dispatch ----
+
+async function handleRequestLine(
+  line: string,
+  adapter: ReturnType<typeof createReasonixToolsAdapter>,
+) {
   let value: unknown;
-  try {
-    value = JSON.parse(line);
-  } catch {
+  try { value = JSON.parse(line); } catch {
     return errorResponse(null, -32700, "Parse error");
   }
-
   if (!isJsonRpcRequest(value)) {
     return errorResponse(null, -32600, "Invalid Request");
   }
-
-  if (value.id === undefined || value.id === null) {
-    return null;
-  }
+  if (value.id === undefined || value.id === null) return null;
 
   switch (value.method) {
     case "initialize":
@@ -144,32 +161,23 @@ async function handleRequestLine(line: string, adapter: ReturnType<typeof create
 }
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const request = value as Record<string, unknown>;
-  return request.jsonrpc === "2.0" && typeof request.method === "string";
+  if (!value || typeof value !== "object") return false;
+  const r = value as Record<string, unknown>;
+  return r.jsonrpc === "2.0" && typeof r.method === "string";
 }
 
 function protocolVersion(params: unknown): string {
   if (params && typeof params === "object") {
-    const value = (params as Record<string, unknown>).protocolVersion;
-    if (typeof value === "string") {
-      return value;
-    }
+    const v = (params as Record<string, unknown>).protocolVersion;
+    if (typeof v === "string") return v;
   }
   return "2025-06-18";
 }
 
 function toolCallParams(params: unknown) {
-  if (!params || typeof params !== "object") {
-    return { name: "", arguments: undefined };
-  }
-  const value = params as Record<string, unknown>;
-  return {
-    name: typeof value.name === "string" ? value.name : "",
-    arguments: value.arguments,
-  };
+  if (!params || typeof params !== "object") return { name: "", arguments: undefined };
+  const v = params as Record<string, unknown>;
+  return { name: typeof v.name === "string" ? v.name : "", arguments: v.arguments };
 }
 
 function successResponse(id: string | number, result: unknown) {

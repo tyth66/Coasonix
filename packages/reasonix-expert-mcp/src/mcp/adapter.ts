@@ -1,5 +1,5 @@
-import { RuntimeWorkerError } from "../worker/client";
-import { extractSingleJsonObject } from "../agents/output-normalizer";
+import { RuntimeWorkerError } from "../runtime/RuntimeWorkerClient";
+import { extractSingleJsonObject } from "../backends/core/output-normalizer";
 import { ERROR_CODES, errorLayerForCode } from "../agent/error-taxonomy";
 import { reviewDiffHandler } from "./tools/review-diff";
 import type {
@@ -75,7 +75,7 @@ export function createReasonixToolsAdapter(options: AgentToolsAdapterOptions) {
         decision = asRuntimeDecision(
           await options.runtime.call(
             "runtime.evaluate_operation",
-            handler.buildRuntimeRequest(input.value, options.agentCommand),
+            handler.buildRuntimeRequest(input.value),
           ),
         );
       } catch (error) {
@@ -181,5 +181,4 @@ function errorToolResult(code: string, summary: string, meta: Record<string, unk
 function diagnosticsMeta(stderr: string): Record<string, unknown> | undefined {
   return stderr ? { diagnostics: { stderr } } : undefined;
 }
-
 

@@ -1,8 +1,7 @@
 # Runtime Core API
 
 This document defines the Rust Runtime Core API boundary for v1. It refines the
-technology decision in `04-technology-selection.md` and the v1 scope in
-`05-v1-mvp-scope.md`.
+technology decision in `04-technology-selection.md`.
 
 The API principle is:
 
@@ -13,19 +12,15 @@ Reasonix payloads are schema-validated JSON values until Rust needs their fields
 
 ## 1. RuntimeKernel Boundary
 
-`RuntimeKernel` is the only composition point for schema, state, policy, audit,
-locks, and artifact gates.
+`RuntimeKernel` is the only composition point for state, policy, and audit
+gates. It is the sole authority for allow/deny decisions.
 
-Conceptual shape:
+Actual implementation (`crates/coagent-runtime-core/src/kernel/mod.rs`):
 
 ```rust
 pub struct RuntimeKernel {
-    schema: SchemaRegistry,
-    state: StateStore,
-    policy: PolicyEngine,
-    audit: AuditWriter,
-    db: RuntimeDatabase,
-    locks: LockTable,
+    store: RuntimeStore,
+    policy_engine: PolicyEngine,
 }
 ```
 
@@ -33,33 +28,18 @@ External callers should not call submodules directly. The TypeScript MCP Adapter
 talks to the Rust Runtime Worker, and the worker dispatches requests through
 `RuntimeKernel`.
 
-## 2. Public API Surface
+## 2. Public API Surface (Implemented)
 
-The v1 public Rust core API should remain narrow:
+The v1 Rust core API surface:
 
 ```rust
 impl RuntimeKernel {
     pub fn initialize(config: RuntimeConfig) -> Result<Self, RuntimeError>;
 
-    pub fn validate_schema(
-        &self,
-        request: SchemaValidationRequest,
-    ) -> SchemaValidationResult;
-
     pub fn evaluate_operation(
         &mut self,
         request: RuntimeOperationRequest,
     ) -> RuntimeDecision;
-
-    pub fn transition_state(
-        &mut self,
-        request: TransitionRequest,
-    ) -> TransitionResult;
-
-    pub fn evaluate_policy(
-        &self,
-        request: PolicyEvaluationRequest,
-    ) -> PolicyEvaluationResult;
 
     pub fn write_audit(
         &mut self,
@@ -68,125 +48,174 @@ impl RuntimeKernel {
 }
 ```
 
+Worker-exposed JSON-RPC methods (`coagent-runtime-worker/src/main.rs`):
+
+```text
+runtime.initialize          -> RuntimeKernel::initialize
+runtime.evaluate_operation  -> RuntimeKernel::evaluate_operation
+runtime.write_audit         -> RuntimeKernel::write_audit
+runtime.shutdown            -> { shutdown: true }
+```
+
 Rules:
 
 ```text
-1. evaluate_operation is the main side-effect gate.
-2. validate_schema validates payloads but does not by itself authorize action.
-3. transition_state is exposed for explicit state operations and tests, but
-   ordinary mutating flows should pass through evaluate_operation.
-4. evaluate_policy is a focused policy query, not a full runtime decision.
-5. write_audit is owned by RuntimeKernel so audit sequencing remains centralized.
+1. evaluate_operation is the main side-effect gate. It runs state + policy
+   checks, merges decisions, persists audit, and advances Created->Running.
+2. write_audit is owned by RuntimeKernel so audit sequencing remains centralized.
+3. No validate_schema, transition_state, or evaluate_policy are exposed at
+   the worker level in v1. Schema validation happens in the TypeScript adapter.
 ```
 
-## 3. Strongly Typed Runtime-Owned Models
+## 3. Strongly Typed Runtime-Owned Models (Implemented)
 
-Rust v1 should define strongly typed structs for objects the runtime owns or
+Rust v1 defines strongly typed structs for objects the runtime owns or
 must inspect for safety.
 
-Required strong types:
+Implemented strong types (`policy/mod.rs`, `state/mod.rs`, `kernel/mod.rs`):
 
 ```text
-RuntimeConfig
-RuntimeOperationRequest
-RuntimeDecision
-TransitionRequest
-TransitionResult
-PolicyEvaluationRequest
-PolicyEvaluationResult
-SchemaValidationRequest
-SchemaValidationResult
-TaskState
-AuditEvent
-AuditWriteResult
-ErrorResult
-RoutingMetadata
-ResourceSet
-PermissionLevel
-RuntimeDecisionValue
-TaskStateValue
+RuntimeConfig              { repo_root: PathBuf }
+RuntimeOperationRequest    { task_id, request_id, operation, permission_level, resources }
+RuntimeDecision            { task_id, request_id, operation, decision, engine_results, reasons, audit_event_id }
+RuntimeDecisionValue       Allow | Deny | RequireApproval | RetryableError | FatalError
+EngineResults              { state, policy }
+TaskState                  { task_id, value, agent_calls, required_verification_gaps }
+TaskStateValue             Created | Running | Completed | Failed
+PermissionLevel            L0Readonly | L1DiffReview | L2PatchOnly | L3IsolatedWorktree
+ResourceSet                { read_paths, write_paths, network }
+PolicyEngine               with review_diff factory method
+PolicyEvaluationResult     { decision, reasons }
+ArtifactPolicy             with allow_read, allow_write, deny builder methods
+AuditEvent                 { task_id, event_type, summary, payload_json }
+AuditWriteResult           AuditEventRecord { id, task_sequence }
+RuntimeStore               SQLite with 10 tables, WAL, FK, triggers
 ```
 
 These types are Rust runtime-owned. The root JSON schema fixture currently
 tracks only the active Reasonix review_diff input/output contract used in tests.
 
-## 4. JSON Value Reasonix Payloads
+## 4. Decision Merge Logic (Implemented)
 
-Reasonix result payloads do not enter Rust for schema validation in the current
-v1 architecture path. The TypeScript adapter checks the result contract before
-returning MCP `structuredContent`.
+From `RuntimeKernel::merge_decisions()`:
 
-Payloads kept as JSON values in v1:
-
-```text
-review_result_v1
-security_audit_v1
-debug_hypothesis_v1
-architecture_options_v1
-performance_review_v1
-patch_proposal_v1
-test_plan_v1
+```rust
+policy=Deny       -> Deny
+any=FatalError    -> FatalError
+any=Deny          -> Deny
+any=RequireApproval -> RequireApproval
+any=RetryableError  -> RetryableError
+otherwise         -> Allow
 ```
 
-Rules:
+## 5. State Evaluation Logic (Implemented)
+
+From `RuntimeKernel::evaluate_state()`:
 
 ```text
-1. Payloads are parsed with duplicate-key rejection before validation.
-2. Reasonix review payloads are validated against the active review-data contract.
-3. Rust owns pre-delegation safety gates. Review-result shape checks stay in the adapter unless a future safety requirement proves otherwise.
-4. Rust must not rely on unchecked ad hoc payload fields for allow decisions.
-5. Add a strong type for a Reasonix payload only when Rust needs to inspect that
-   schema's fields for runtime safety or transaction semantics.
+- Task in terminal state (Completed | Failed) -> Deny
+  reason: "task {task_id} is in terminal state {state}"
+- Task exists in non-terminal state -> Allow
+- Task not found (fresh) -> Allow with new TaskState(task_id) in Created state
+- Storage error -> FatalError
 ```
 
-For v1, `reasonix.review_diff` output needs schema validation and common field
-checks only. It does not need a full Rust `ReviewResult` domain model.
+If the decision is Allow and the task is in Created state, the kernel
+transitions it to Running via `Store::upsert_task_state`.
 
-## 5. Store Boundaries
+## 6. Policy Evaluation Logic (Implemented)
 
-v1 uses a repo-local SQLite database plus file-backed artifacts.
+From `PolicyEngine::evaluate()` (`policy/mod.rs`):
 
 ```text
-RuntimeDatabase:
-  opens .agent/Coagent.sqlite
-
-StateStore:
-  reads/writes task_state rows
-
-ArtifactGate:
-  validates artifact paths and resource access, with metadata in SQLite
+1. Check operation is registered       -> deny if unknown
+2. Check permission level matches       -> add reason if mismatch
+3. Check network                        -> add reason if true (default deny)
+4. Check each read_path against artifact_policy.authorize(Read, path)  -> add reason if denied
+5. Check each write_path against artifact_policy.authorize(Write, path) -> add reason if denied
+6. If any reasons -> Deny, else Allow
 ```
 
-Rules:
+Default policy from `RuntimeKernel::initialize()`:
 
-```text
-1. StateStore owns task state persistence.
-2. AuditWriter owns audit ordering persistence: global row id plus per-task
-   task_sequence.
-3. ArtifactGate is not a general filesystem abstraction.
-4. RuntimeKernel coordinates store writes so state and audit behavior remain
-   auditable from one call path.
-5. Worker memory is an acceleration layer; .agent/Coagent.sqlite and artifact
-   files remain the recovery source.
-6. Audit, state, locks, and cache metadata use SQLite transactions.
+```rust
+artifact_policy
+    .allow_read([".agent/context/**", ".agent/diffs/**", ".agent/logs/**",
+                 "docs/**", "crates/**", "packages/**", "schemas/**"])
+    .allow_write([".agent/results/**", ".agent/logs/**"])
+    .deny([".agent/secrets/**", ".git/**"])
 ```
 
-## 6. Audit Ownership
+## 7. RuntimeDecision Payload Shape (Actual)
 
-Submodules may produce audit event candidates, but only `RuntimeKernel` writes
-audit records.
+From `RuntimeDecision::to_payload()`:
 
-Allowed:
+```json
+{
+  "schema_version": "runtime_decision_v1",
+  "task_id": "TASK-review-diff-1",
+  "operation": "reasonix.review_diff",
+  "decision": "allow",
+  "engine_results": {
+    "state": "allow",
+    "policy": "allow"
+  },
+  "reasons": []
+}
+```
+
+Optional fields: `request_id` (when present), `audit_event_id` (when audit persisted).
+
+## 8. Store Boundaries (Implemented)
+
+v1 uses a repo-local SQLite database at `.agent/coagent.sqlite`.
 
 ```text
-PolicyEngine returns matched rule data.
-StateMachine returns transition allow/deny data.
-SchemaRegistry returns validation errors.
-RuntimeKernel builds and writes audit_event_v1.
+RuntimeStore:
+  - initialize(repo_root)           -> opens/creates SQLite, runs 10 migrations
+  - upsert_task_state(TaskState)    -> tasks + task_state tables
+  - load_task_state(task_id)        -> TaskState or TaskStateNotFound
+  - commit_runtime_decision_with_audit(decision, audit) -> SQLite transaction
+  - write_audit_event(event)        -> audit_events insert
+  - foreign_keys_enabled()          -> PRAGMA check
+  - journal_mode()                  -> WAL check
+  - migration_tables()              -> runtime_metadata inspection
+```
+
+SQLite pragmas applied on every open:
+```text
+PRAGMA foreign_keys = ON
+PRAGMA journal_mode = WAL
+PRAGMA synchronous = FULL
+busy_timeout = 5000ms
+```
+
+Tables (10 migrations):
+1. `runtime_metadata` - migration tracking
+2. `tasks` - task identity
+3. `audit_events` - append-only (UPDATE/DELETE triggers raise ABORT)
+4. `task_state` - per-task state + agent_calls
+5. `runtime_decisions` - decision history with audit_event_id FK
+6. `schema_validation_results` - schema validation records
+7. `policy_evaluation_results` - policy evaluation records (table exists, limited writes)
+8. `locks` - distributed lock table
+9. `artifacts` - artifact path + hash records
+10. `cache_entries` - cache metadata (reuse_enabled always 0 in v1)
+
+## 9. Audit Ownership (Implemented)
+
+Submodules produce data; only `RuntimeKernel` writes audit records.
+
+```text
+PolicyEngine.evaluate() -> PolicyEvaluationResult { decision, reasons }
+RuntimeKernel.evaluate_state() -> (RuntimeDecisionValue, reasons, TaskState)
+RuntimeKernel.persist_runtime_decision_with_audit() -> SQLite transaction:
+  1. INSERT audit_events
+  2. INSERT runtime_decisions (FK audit_event_id)
+  3. COMMIT
 ```
 
 Forbidden:
-
 ```text
 PolicyEngine directly inserts audit rows.
 SchemaRegistry directly inserts audit rows.
@@ -194,123 +223,69 @@ StateMachine directly mutates audit id or task_sequence.
 Worker dispatch writes audit records outside RuntimeKernel.
 ```
 
-This keeps audit ordering, failure behavior, and append-only semantics
-centralized. The global audit id is database order; task_sequence is allocated
-per task by RuntimeKernel/AuditWriter inside the same transaction as the runtime
-decision.
+## 10. Error Model
 
-## 7. Error Model
-
-Rust internal errors may be richer than JSON-RPC errors.
-
-Internal error categories:
+Rust internal errors:
 
 ```text
-InvalidRequest
-SchemaInvalid
-StateDenied
-PolicyDenied
-ApprovalRequired
-BudgetExceeded
-PatchDenied
-CacheDenied
-SnapshotMismatch
-Io
-Internal
+RuntimeError::Artifact(ArtifactPolicyError)
+RuntimeError::Store(StoreError)
 ```
 
-JSON-RPC boundary mapping:
-
+StoreError variants:
 ```text
-RuntimeError -> JSON-RPC error
-JSON-RPC error.data -> error_result_v1 when task_id/request_id are available
+Filesystem(io::Error)
+Sqlite(rusqlite::Error)
+MigrationFailed(String)
+AppendOnlyViolation
+TaskStateNotFound(String)
+InvalidTaskState(String)
 ```
 
-Rules:
-
-```text
-1. Internal errors must not leak secrets or raw environment values.
-2. Policy/state denials are expected runtime results, not panics.
-3. Parse errors and invalid JSON-RPC frames use JSON-RPC standard errors.
-4. Runtime denials use Coagent -320xx error codes.
-5. Worker crash or unavailable worker maps to runtime_unavailable in the adapter
-   and side_effect_not_executed.
-```
-
-JSON-RPC error code mapping:
+JSON-RPC boundary mapping (`coagent-runtime-worker/src/main.rs`):
 
 ```text
 -32700  Parse error
 -32600  Invalid Request
 -32601  Method not found
 -32602  Invalid params
--32001  runtime_policy_denied
--32002  runtime_state_denied
--32003  runtime_schema_invalid
--32004  runtime_approval_required
--32005  runtime_budget_exceeded
--32006  runtime_snapshot_mismatch
--32007  runtime_storage_error
 -32008  runtime_unavailable
--32009  runtime_unknown_operation
 -32010  runtime_internal_error
 ```
 
-Architecture impact:
+## 11. Mutability Rules (Implemented)
 
 ```text
-No architecture change. This fixes adapter/worker interoperability by making
-the existing Coagent -320xx range executable and testable.
-```
-
-## 8. Mutability Rules
-
-Use mutability to expose side-effect potential clearly.
-
-```text
-initialize: constructs owned runtime state
-validate_schema: &self
-evaluate_policy: &self
-evaluate_operation: &mut self
-transition_state: &mut self
-write_audit: &mut self
+initialize:               constructs owned kernel state (store + policy_engine)
+evaluate_operation:       &mut self (appends audit, updates state, advances cursors)
+write_audit:              &mut self (appends audit event)
 ```
 
 `evaluate_operation` is mutable because it may:
-
 ```text
-append audit events
-update task state counters
-acquire or release locks
-record runtime decisions
+append audit events (store.write_audit_event)
+update task state counters (store.upsert_task_state)
+record runtime decisions (store.commit_runtime_decision_with_audit)
 advance per-task audit task_sequence cursors
+transition Created -> Running
 ```
 
-Pure validation functions should remain immutable unless they explicitly emit
-audit records through `RuntimeKernel`.
+## 12. v1 API Slice (Actual)
 
-## 9. v1 Minimum API Slice
-
-The first implementation slice should include:
+The v1 implementation includes:
 
 ```text
-RuntimeKernel::initialize
-RuntimeKernel::validate_schema
-RuntimeKernel::evaluate_operation
-RuntimeKernel::write_audit
+RuntimeKernel::initialize           -> store + policy_engine setup
+RuntimeKernel::evaluate_operation   -> state + policy + merge + audit + state advance
+RuntimeKernel::write_audit          -> standalone audit event write
 ```
 
-`transition_state` and `evaluate_policy` may be implemented as internal
-subroutines first, then exposed when tests require direct entry points.
-
-The first adapter vertical slice calls:
+The adapter vertical slice calls:
 
 ```text
-runtime.initialize
-runtime.evaluate_operation
-runtime.write_audit
+runtime.initialize({ repo_root })
+runtime.evaluate_operation({ task_id, operation, permission_level, resources })
+runtime.shutdown()
 ```
 
-through JSON-RPC 2.0 over stdio.
-
-
+through JSON-RPC 2.0 over stdio via `RuntimeWorkerClient`.

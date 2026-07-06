@@ -94,4 +94,3 @@ fn is_legal_transition(current: TaskStateValue, next: TaskStateValue) -> bool {
             | (TaskStateValue::Running, TaskStateValue::Failed)
     )
 }
-

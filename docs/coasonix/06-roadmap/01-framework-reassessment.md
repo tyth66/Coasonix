@@ -46,21 +46,29 @@ Boundary 5: Evidence
 
 ## Implementation Status vs Original Assessment
 
-The original assessment marked many areas "implementation missing." Current status:
+The original assessment marked many areas "implementation missing." Current status
+as of 2026-07-06:
 
 | Original Area | Original Assessment | Current Status |
 |---|---|---|
 | Deterministic runtime spec | high readiness | Implemented: state, policy, audit in Rust core |
-| Runtime enforcement | high readiness | Implemented: RuntimeKernel + PolicyEngine + SQLite audit |
+| Runtime enforcement | high readiness | Implemented: RuntimeKernel + PolicyEngine + ArtifactPolicy + SQLite audit |
 | MCP MVP | high readiness | Implemented: TS MCP adapter + Rust JSON-RPC worker |
-| Tool contracts (v1) | high for v1 | Implemented: review_diff exposed |
+| Tool contracts (v1) | high for v1 | Implemented: review_diff exposed via pluggable handler architecture |
 | Context projection | medium-high | Post-v1: design complete, not implemented |
 | Patch safety | medium-high | Post-v1: design complete, not implemented |
-| Audit (v1) | high for v1 | Implemented: SQLite append-only with triggers |
+| Audit (v1) | high for v1 | Implemented: SQLite append-only with triggers (10 tables, WAL, FK) |
 | Verification | medium-high | Post-v1: design complete |
 | Human approval | medium-high | Post-v1: design complete |
-| Performance review | medium-high | Post-v1: tool definition exists |
+| Performance review | medium-high | Post-v1: tool definition exists, not implemented |
 | Production HTTP | medium-low | Post-v1: not planned |
+| Artifact policy | — | Implemented: ArtifactPolicy with glob allowlist/denylist |
+| Schema validation | high | Implemented: SchemaRegistry with duplicate-key detection |
+| Canonical JSON/path | — | Implemented: canonical/mod.rs |
+| Pluggable tool handlers | — | Implemented: strategy pattern in adapter.ts |
+| Error taxonomy | — | Implemented: 14 codes across 6 layers |
+| Backend profiles | — | Implemented: mock + reasonix profiles |
+| Worker contract conformance | — | Implemented: worker-contract.ts |
 
 ## Priority Next Work (Original)
 
@@ -80,6 +88,18 @@ The original priority list. Items already completed are **[DONE]**; remaining ar
 11. [POST-V1] Add adversarial tests for prompt injection, path traversal, etc.
 ```
 
+Additional completed since original assessment:
+
+```text
+12. [DONE] Pluggable tool handler architecture (strategy pattern).
+13. [DONE] Multi-operation PolicyEngine registry.
+14. [DONE] Artifact policy with glob allowlist/denylist.
+15. [DONE] Error taxonomy (14 codes, 6 layers).
+16. [DONE] Backend profiles (mock, reasonix).
+17. [DONE] Worker contract conformance testing.
+18. [DONE] TypeScript RuntimeWorkerClient (JSON-RPC 2.0 framing, timeout, reconnect).
+```
+
 ## Final Definition
 
 Coagent is best described as:
@@ -89,4 +109,3 @@ Codex-centered expert delegation runtime with strict tool contracts,
 explicit context projection, policy-bound execution, evidence-gated decisions,
 and append-only auditability.
 ```
-

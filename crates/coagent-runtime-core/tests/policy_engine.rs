@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use coagent_runtime_core::{
     artifact::ArtifactPolicy,
     policy::{
-        CommandInvocation, PermissionLevel, PolicyEngine, PolicyEvaluationRequest, ResourceSet,
-        RoutingMetadata, RuntimeDecision, RuntimeDecisionValue, RuntimeOperationRequest,
+        PermissionLevel, PolicyEngine, PolicyEvaluationRequest, ResourceSet, RoutingMetadata,
+        RuntimeDecision, RuntimeDecisionValue, RuntimeOperationRequest,
     },
 };
 
@@ -21,7 +21,7 @@ fn review_diff_engine(repo_root: impl Into<PathBuf>) -> PolicyEngine {
         ])
         .allow_write([".agent/results/**", ".agent/logs/**"])
         .deny([".agent/secrets/**", ".git/**"]);
-    PolicyEngine::review_diff("reasonix", artifact_policy)
+    PolicyEngine::review_diff(artifact_policy)
 }
 
 fn review_diff_request() -> RuntimeOperationRequest {
@@ -34,10 +34,6 @@ fn review_diff_request() -> RuntimeOperationRequest {
             read_paths: vec![".agent/diffs/current.diff".to_string()],
             write_paths: vec![".agent/results/review.json".to_string()],
             network: false,
-            command: Some(CommandInvocation::Argv(vec![
-                "reasonix".to_string(),
-                "review-diff".to_string(),
-            ])),
         },
     }
 }
@@ -79,65 +75,7 @@ fn network_request_is_denied_by_default() {
 }
 
 #[test]
-fn shell_string_is_rejected() {
-    let repo = std::env::current_dir().expect("cwd");
-    let engine = review_diff_engine(repo);
-    let mut request = review_diff_request();
-    request.resources.command = Some(CommandInvocation::Shell(
-        "reasonix review-diff && curl https://example.invalid".to_string(),
-    ));
-
-    let result = engine.evaluate(&request);
-
-    assert_eq!(result.decision, RuntimeDecisionValue::Deny);
-    assert!(
-        result
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("shell string"))
-    );
-}
-
-#[test]
-fn argv_substring_bypass_is_rejected() {
-    let repo = std::env::current_dir().expect("cwd");
-    let engine = review_diff_engine(repo);
-    let mut request = review_diff_request();
-    request.resources.command = Some(CommandInvocation::Argv(vec![
-        "reasonix-malicious".to_string(),
-        "review-diff".to_string(),
-    ]));
-
-    let result = engine.evaluate(&request);
-
-    assert_eq!(result.decision, RuntimeDecisionValue::Deny);
-    assert!(
-        result
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("argv[0]"))
-    );
-}
-
-#[test]
-fn argv_extra_argument_bypass_is_rejected() {
-    let repo = std::env::current_dir().expect("cwd");
-    let engine = review_diff_engine(repo);
-    let mut request = review_diff_request();
-    request.resources.command = Some(CommandInvocation::Argv(vec![
-        "reasonix".to_string(),
-        "review-diff".to_string(),
-        "--network".to_string(),
-    ]));
-
-    let result = engine.evaluate(&request);
-
-    assert_eq!(result.decision, RuntimeDecisionValue::Deny);
-    assert!(result.reasons.iter().any(|reason| reason.contains("argv args")));
-}
-
-#[test]
-fn denied_path_blocks_operation_before_read() {
+fn denied_path_blocks_operation() {
     let repo = std::env::current_dir().expect("cwd");
     let engine = review_diff_engine(repo);
     let mut request = review_diff_request();
@@ -155,7 +93,7 @@ fn denied_path_blocks_operation_before_read() {
 }
 
 #[test]
-fn allowed_review_diff_request_records_command_hash() {
+fn allowed_review_diff_request_passes() {
     let repo = std::env::current_dir().expect("cwd");
     let engine = review_diff_engine(repo);
 
@@ -163,11 +101,23 @@ fn allowed_review_diff_request_records_command_hash() {
 
     assert_eq!(result.decision, RuntimeDecisionValue::Allow);
     assert!(result.reasons.is_empty());
+}
+
+#[test]
+fn unknown_operation_is_denied() {
+    let repo = std::env::current_dir().expect("cwd");
+    let engine = review_diff_engine(repo);
+    let mut request = review_diff_request();
+    request.operation = "agent.unknown".to_string();
+
+    let result = engine.evaluate(&request);
+
+    assert_eq!(result.decision, RuntimeDecisionValue::Deny);
     assert!(
         result
-            .command_hash
-            .as_deref()
-            .is_some_and(|hash| hash.starts_with("sha256:"))
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("unknown operation"))
     );
 }
 
@@ -177,7 +127,6 @@ fn m2_minimum_owned_types_are_constructible() {
         read_paths: vec![],
         write_paths: vec![],
         network: false,
-        command: None,
     };
     let policy_request = PolicyEvaluationRequest {
         operation: "reasonix.review_diff".to_string(),
@@ -190,7 +139,6 @@ fn m2_minimum_owned_types_are_constructible() {
         operation: policy_request.operation.clone(),
         decision: RuntimeDecisionValue::Deny,
         reasons: vec!["not evaluated".to_string()],
-        command_hash: None,
     };
     let routing = RoutingMetadata {
         project_key_hash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -204,5 +152,3 @@ fn m2_minimum_owned_types_are_constructible() {
     assert_eq!(decision.decision, RuntimeDecisionValue::Deny);
     assert_eq!(routing.lane, "review");
 }
-
-

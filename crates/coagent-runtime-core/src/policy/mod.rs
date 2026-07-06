@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use sha2::{Digest, Sha256};
-
 use crate::artifact::{ArtifactPolicy, ResourceAccess};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,17 +20,10 @@ pub enum RuntimeDecisionValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommandInvocation {
-    Argv(Vec<String>),
-    Shell(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceSet {
     pub read_paths: Vec<String>,
     pub write_paths: Vec<String>,
     pub network: bool,
-    pub command: Option<CommandInvocation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,15 +39,12 @@ pub struct RuntimeOperationRequest {
 pub struct PolicyEvaluationResult {
     pub decision: RuntimeDecisionValue,
     pub reasons: Vec<String>,
-    pub command_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 struct RegisteredOperation {
     operation: String,
     required_permission: PermissionLevel,
-    agent_executable: String,
-    subcommand: String,
 }
 
 #[derive(Debug, Clone)]
@@ -77,8 +65,6 @@ impl PolicyEngine {
         mut self,
         operation: impl Into<String>,
         required_permission: PermissionLevel,
-        agent_executable: impl Into<String>,
-        subcommand: impl Into<String>,
     ) -> Self {
         let op = operation.into();
         self.operations.insert(
@@ -86,35 +72,24 @@ impl PolicyEngine {
             RegisteredOperation {
                 operation: op,
                 required_permission,
-                agent_executable: agent_executable.into(),
-                subcommand: subcommand.into(),
             },
         );
         self
     }
 
-    pub fn review_diff(
-        agent_executable: impl Into<String>,
-        artifact_policy: ArtifactPolicy,
-    ) -> Self {
-        Self::new(artifact_policy).register_operation(
-            "reasonix.review_diff",
-            PermissionLevel::L1DiffReview,
-            agent_executable,
-            "review-diff",
-        )
+    pub fn review_diff(artifact_policy: ArtifactPolicy) -> Self {
+        Self::new(artifact_policy)
+            .register_operation("reasonix.review_diff", PermissionLevel::L1DiffReview)
     }
 
     pub fn evaluate(&self, request: &RuntimeOperationRequest) -> PolicyEvaluationResult {
         let mut reasons = Vec::new();
-        let mut computed_command_hash = None;
 
         let Some(registered) = self.operations.get(&request.operation) else {
             reasons.push(format!("unknown operation {}", request.operation));
             return PolicyEvaluationResult {
                 decision: RuntimeDecisionValue::Deny,
                 reasons,
-                command_hash: None,
             };
         };
 
@@ -141,31 +116,6 @@ impl PolicyEngine {
             }
         }
 
-        match &request.resources.command {
-            Some(CommandInvocation::Argv(argv)) => {
-                if argv.is_empty() {
-                    reasons.push("argv command is empty".to_string());
-                } else if argv[0] != registered.agent_executable {
-                    reasons.push(
-                        "argv[0] does not match configured agent executable".to_string(),
-                    );
-                } else if argv.len() != 2 || argv.get(1).map(String::as_str) != Some(&registered.subcommand) {
-                    reasons.push(format!(
-                        "argv args do not match {} profile",
-                        registered.operation
-                    ));
-                } else {
-                    computed_command_hash = Some(command_hash(argv));
-                }
-            }
-            Some(CommandInvocation::Shell(_)) => {
-                reasons.push("shell string commands are rejected".to_string());
-            }
-            None => {
-                reasons.push("command is required".to_string());
-            }
-        }
-
         PolicyEvaluationResult {
             decision: if reasons.is_empty() {
                 RuntimeDecisionValue::Allow
@@ -173,13 +123,11 @@ impl PolicyEngine {
                 RuntimeDecisionValue::Deny
             },
             reasons,
-            command_hash: computed_command_hash,
         }
     }
 }
 
-
-// ── Composite request/eval types (kept for test constructibility) ──
+// ---- Legacy test constructors kept for external test compatibility ----
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyEvaluationRequest {
@@ -195,7 +143,6 @@ pub struct RuntimeDecision {
     pub operation: String,
     pub decision: RuntimeDecisionValue,
     pub reasons: Vec<String>,
-    pub command_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,12 +151,3 @@ pub struct RoutingMetadata {
     pub session_key_hash: String,
     pub lane: String,
 }
-fn command_hash(argv: &[String]) -> String {
-    let mut hasher = Sha256::new();
-    for arg in argv {
-        hasher.update(arg.as_bytes());
-        hasher.update([0]);
-    }
-    format!("sha256:{:x}", hasher.finalize())
-}
-

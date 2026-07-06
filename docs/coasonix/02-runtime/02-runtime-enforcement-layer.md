@@ -1,32 +1,40 @@
 # Runtime Enforcement Layer
 
-当前 Coagent 文档已经定义了规则、schema、状态机、policy、事务、缓存和可观测性。系统真正能否安全运行，取决于 Runtime Enforcement Layer 是否把这些规则变成不可绕过的运行时门禁。
+Current Coagent documentation defines rules, schemas, state machines, policy,
+transactions, caching, and observability. The Runtime Enforcement Layer turns
+those rules into non-bypassable runtime gates.
 
-本文件定义 Coagent 的执行内核。
+This file defines the Coagent execution kernel.
 
-将本文件中的门禁规则转成可执行实现时，必须同时遵守
-[06-executable-runtime-details.md](06-executable-runtime-details.md)。该文件定义
-canonicalization、path matcher、shell argv parser、network exceptions、cache key、
-audit storage、verification runner、human approval lifecycle 和 patch dry-run 的
-确定性细节。
+When translating gate rules into executable implementations, also obey
+[06-executable-runtime-details.md](06-executable-runtime-details.md). That file defines
+canonicalization, path matcher, shell argv parser, network exceptions, cache key,
+audit storage, verification runner, human approval lifecycle, and patch dry-run
+deterministic details.
 
 ## 1. Runtime Positioning
 
-Coagent 当前阶段：
+Current v1 implementation status:
 
 ```text
-Deterministic Multi-Agent Runtime Spec: complete
-Runtime Enforcement Layer: required before safe operation
+Rust RuntimeKernel:                    implemented (kernel/mod.rs)
+  - State engine:                      implemented (state/mod.rs)
+  - Policy engine:                     implemented (policy/mod.rs)
+  - Artifact policy:                   implemented (artifact/mod.rs)
+  - SQLite audit storage:              implemented (storage/mod.rs, 10 tables)
+  - JSON Schema validation:            implemented (schema/mod.rs)
+  - Canonical JSON/path normalization: implemented (canonical/mod.rs)
+Rust JSON-RPC stdio Worker:            implemented (coagent-runtime-worker/main.rs)
+TypeScript Runtime Worker client:      implemented (RuntimeWorkerClient.ts)
+MCP Adapter integration:               implemented (adapter.ts calls runtime.evaluate_operation)
 ```
-
-换句话说，系统已经可以实现，但在 Runtime Enforcement Layer 落地之前，不应声称可以安全运行。
 
 MVP deployment:
 
 ```text
-TypeScript `reasonix-expert` MCP Adapter is launched by Codex as a local STDIO
+TypeScript reasonix-expert MCP Adapter is launched by Codex as a local STDIO
 MCP server.
-Rust Runtime Worker is a managed child process of the adapter.
+Rust Runtime Worker is a managed child process of the adapter (Bun.spawn).
 Rust Runtime Core owns the enforceable safety kernel.
 Remote Runtime Service / Reasonix worker pool is not part of v1.
 ```
@@ -40,30 +48,35 @@ TypeScript Adapter + managed worker boundary.
 
 ## 2. Runtime Boundary
 
-Runtime Enforcement Layer 位于所有高风险动作之前：
+Runtime Enforcement Layer sits before every high-risk action:
 
 ```text
-Codex Orchestrator
-  -> Runtime Enforcement Layer
-      -> State Machine Runtime Engine
-      -> Schema Enforcement Layer
-      -> Policy Execution Engine
-  -> Allowed Side Effect
+Codex Orchestrator (MCP tools/call)
+  -> TypeScript Adapter
+      -> Rust Runtime Worker (JSON-RPC 2.0 stdio)
+          -> Runtime Enforcement Layer
+              -> State Machine (state/mod.rs)
+              -> Policy Engine (policy/mod.rs)
+              -> Audit Writer (storage/mod.rs)
+          -> Allow/Deny decision
+  -> Reasonix invocation (only on allow)
 ```
 
-所有以下动作都必须经过 Runtime Enforcement Layer：
+v1 enforced operations:
 
 ```text
-state transition
-MCP tools/call
-Reasonix result acceptance
+reasonix.review_diff (through evaluate_operation)
+```
+
+Post-v1 operations (design only):
+
+```text
 patch safety check
 patch transaction apply
 verification completion
 human approval unblock
 shell command execution
 network request
-filesystem read/write
 cache result reuse
 task completion
 ```
@@ -76,70 +89,78 @@ Runtime gates enforce rules.
 Fail closed on uncertainty.
 ```
 
-任何模块都不得直接执行高风险动作并在事后记录。审计是证据链，不是授权机制。
+No module may execute a high-risk action and record it afterward. Audit is
+evidence chain, not authorization mechanism.
 
-## 4. Runtime Kernel
+## 4. Runtime Kernel (Implemented)
 
-Runtime Kernel 是三个 engine 的组合：
+The Runtime Kernel combines three engines:
 
 ```text
-State Machine Runtime Engine
-Schema Enforcement Layer
-Policy Execution Engine
+State Machine Engine (state/mod.rs)  -> TaskStateValue: Created -> Running -> Completed/Failed
+Policy Engine (policy/mod.rs)        -> PolicyEngine with operation registry + path/argv/network checks
+Artifact Policy (artifact/mod.rs)    -> ArtifactPolicy with allowlist/denylist + glob matching
 ```
 
-Kernel 接收 operation request，执行三类检查，返回 allow / deny / require_approval。Reasonix Project / Session Lane routing is evaluated as part of policy execution and audit metadata.
+The kernel receives an operation request, runs checks, and returns
+allow / deny / require_approval / retryable_error / fatal_error.
 
-## 5. Runtime Operation Flow
+References:
+- `crates/coagent-runtime-core/src/kernel/mod.rs` — RuntimeKernel.evaluate_operation
+- `crates/coagent-runtime-core/src/state/mod.rs` — TaskState, TaskStateValue
+- `crates/coagent-runtime-core/src/policy/mod.rs` — PolicyEngine.evaluate
+- `crates/coagent-runtime-core/src/storage/mod.rs` — RuntimeStore with SQLite
+
+## 5. Runtime Operation Flow (Implemented)
 
 ```text
-operation_request
--> schema_enforcer.validate_request
--> state_machine.assert_transition_or_action_allowed
--> policy_engine.evaluate
--> runtime_decision
--> execute only if decision=allow
--> schema_enforcer.validate_result
--> state_machine.commit_transition
--> audit_event_v1
+adapter.ts: tools/call received
+-> adapter calls runtime.evaluate_operation via RuntimeWorkerClient
+-> Rust Worker dispatches to RuntimeKernel.evaluate_operation
+-> evaluate_state: checks task terminal state (Completed/Failed -> Deny)
+-> policy_engine.evaluate: checks operation registration, permission level,
+   path allowlist/denylist, network default-deny
+-> merge_decisions: Deny > FatalError > RequireApproval > RetryableError > Allow
+-> persist_runtime_decision_with_audit: SQLite transaction (decision + audit event)
+-> persist_running_state: Created -> Running transition
+-> return RuntimeDecision payload
+-> adapter checks decision.decision; only "allow" proceeds to Reasonix
 ```
 
-如果任何一步失败：
+If any step fails:
 
 ```text
-decision = deny
+decision = deny or fatal_error
 side_effect = not_executed
-audit_event = runtime_denied
+audit_event = runtime_decision_deny or runtime_decision_fatal_error
 ```
 
-## 6. Runtime Decision Values
+## 6. Runtime Decision Values (Implemented)
 
 ```text
-allow
-deny
-require_approval
+allow               (only this permits side effects)
+deny                (final for the requested operation)
+require_approval    (post-v1, not yet exercised)
 retryable_error
 fatal_error
 ```
 
-Rules:
-
-```text
-1. allow is the only decision that permits side effects.
-2. require_approval moves task to waiting_for_approval and blocks side effects.
-3. deny is final for the requested operation.
-4. retryable_error may retry only if budget remains and state allows retry.
-5. fatal_error moves task to failed unless policy explicitly allows recovery.
-```
+See `crates/coagent-runtime-core/src/policy/mod.rs`: `RuntimeDecisionValue`.
 
 ## 7. Runtime Operation Types
+
+v1 implemented:
+
+```text
+reasonix.review_diff (via evaluate_operation)
+```
+
+Post-v1 design:
 
 ```text
 transition_state
 call_reasonix_tool
 accept_reasonix_result
-route_reasonix_project
-route_reasonix_session
 freeze_snapshot
 apply_patch_transaction
 run_verification
@@ -153,393 +174,202 @@ open_network
 reuse_cache_result
 ```
 
-## 8. State Machine Runtime Engine
+## 8. State Machine Runtime Engine (Implemented)
 
 ### 8.1 Responsibility
 
-State Machine Runtime Engine enforces [01-global-task-state-machine.md](01-global-task-state-machine.md).
+State Machine Runtime Engine enforces the task lifecycle.
 
-It owns:
+Implemented in `crates/coagent-runtime-core/src/state/mod.rs`:
 
 ```text
-allowed transition table
-forbidden transition table
-terminal state rules
-waiting_for_approval blocking semantics
-verification gap completion semantics
-limit-triggered stop semantics
+TaskStateValue: Created | Running | Completed | Failed
+Transitions: Created->Running, Running->Completed, Running->Failed
+Terminal: Completed and Failed reject all further transitions
 ```
 
-### 8.2 API
+`RuntimeKernel.evaluate_state()` checks if a task is in terminal state.
+Terminal tasks get `Deny` decisions. Non-existent tasks get a fresh
+`Created` state and proceed.
+
+### 8.2 API (Worker-Level)
+
+The Rust Worker exposes this through `runtime.evaluate_operation`:
 
 ```json
 {
-  "schema_version": "transition_request_v1",
-  "task_id": "TASK-001",
-  "from_state": "deciding",
-  "to_state": "patch_checking",
-  "event": "decision_accept_patch",
-  "request_id": "REQ-001"
-}
-```
-
-Result:
-
-```json
-{
-  "schema_version": "transition_result_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "decision": "allow",
-  "from_state": "deciding",
-  "to_state": "patch_checking",
-  "reasons": []
-}
-```
-
-### 8.3 Hard Requirements
-
-```text
-1. Transition validation happens before side effects.
-2. Illegal transition fails closed.
-3. Terminal states reject mutation operations.
-4. waiting_for_approval blocks mutation even if CI succeeds.
-5. complete is forbidden while required verification gaps exist.
-6. Counters are monotonic unless task is explicitly reopened.
-```
-
-### 8.4 Enforcement Examples
-
-```text
-reasonix_result_pending -> patch_applying: deny
-waiting_for_approval -> editing without approval: deny
-verifying -> complete with required gap: deny
-stopped_by_limit -> delegating_to_reasonix: deny
-```
-
-## 9. Schema Enforcement Layer
-
-### 9.1 Responsibility
-
-Schema Enforcement Layer enforces [../../../schemas/coagent-v1.schema.json](../../../schemas/coagent-v1.schema.json) using JSON Schema Draft 2020-12.
-
-It owns:
-
-```text
-input validation
-output validation
-schema_version matching
-strict additionalProperties handling
-error_result_v1 shaping
-compatibility shim decision
-```
-
-### 9.2 API
-
-```json
-{
-  "schema_version": "schema_validation_request_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "expected_schema": "performance_review_v1",
-  "payload": {}
-}
-```
-
-Result:
-
-```json
-{
-  "schema_version": "schema_validation_result_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "expected_schema": "performance_review_v1",
-  "valid": false,
-  "errors": [
-    {
-      "path": "/confidence",
-      "message": "must be <= 1"
+  "method": "runtime.evaluate_operation",
+  "params": {
+    "task_id": "TASK-001",
+    "operation": "reasonix.review_diff",
+    "permission_level": "L1_DIFF_REVIEW",
+    "resources": {
+      "read_paths": [".agent/diffs/current.diff"],
+      "write_paths": [],
+      "network": false
     }
-  ]
+  }
 }
 ```
 
-### 9.3 Hard Requirements
+Result: runtime_decision_v1 payload with `allow`/`deny` + reasons.
+
+### 8.3 Hard Requirements (Implemented)
 
 ```text
-1. Invalid tool input blocks tools/call.
-2. Invalid Reasonix output blocks Codex decision.
-3. Invalid error result is fatal wrapper error.
-4. output_schema must match returned schema_version.
-5. Unknown schema_version fails unless explicit shim exists.
-6. Shim must emit schema_shim_applied audit event.
+1. Transition validation happens before side effects.  -> evaluate_state runs first
+2. Illegal transition fails closed.                      -> terminal state -> Deny
+3. Terminal states reject mutation operations.           -> Completed/Failed -> Deny
 ```
 
-### 9.4 Fail-Closed Cases
+Post-v1: `waiting_for_approval` blocking, `complete` verification gaps.
+
+## 9. Schema Enforcement (Current State)
+
+v1 does not run a Runtime Schema Enforcement Layer in the live call path.
+The schema file is a **test contract fixture**:
 
 ```text
-missing task_id
-request_id mismatch
-confidence outside 0..1
-unknown schema_version
-unexpected top-level field
-patch proposal without files_changed
-performance_review without benchmark_plan
+schemas/coagent-v1.schema.json
 ```
 
-## 10. Policy Execution Engine
+The MCP adapter performs a narrow local `review_result_v1` contract check
+in `worker-contract.ts:reviewResultSchemaError()` before returning
+`structuredContent`. The Rust `schema/mod.rs` module exists for standalone
+validation + duplicate-key detection tests.
+
+Architecture impact:
+
+```text
+The architecture path intentionally stays schema-free at Runtime startup;
+the fixture is for regression tests and contract documentation.
+```
+
+## 10. Policy Execution Engine (Implemented)
 
 ### 10.1 Responsibility
 
-Policy Execution Engine turns `.agent/policy.yaml` and safety rules into runtime gates.
+Policy Execution Engine turns safety rules into runtime gates.
 
-It owns:
-
-```text
-path allowlist / denylist
-permission level enforcement
-network constraints
-shell constraints
-patch approval rules
-human approval triggers
-cache reuse eligibility
-Reasonix execution mode authorization
-```
-
-### 10.2 API
-
-```json
-{
-  "schema_version": "policy_evaluation_request_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "operation": "run_shell",
-  "permission_level": "L1_DIFF_REVIEW",
-  "resources": {
-    "paths": [".agent/logs/TASK-001.test.log"],
-    "command": ["git", "diff"]
-  }
-}
-```
-
-Result:
-
-```json
-{
-  "schema_version": "policy_evaluation_result_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "decision": "allow",
-  "reasons": [],
-  "requires_human_approval": false
-}
-```
-
-### 10.3 Hard Requirements
+Implemented in `crates/coagent-runtime-core/src/policy/mod.rs`:
 
 ```text
-1. Denylist wins over allowlist.
-2. Path normalization happens before policy match.
-3. Shell policy evaluates argv, not raw command string.
-4. Network default is deny.
-5. L2_PATCH_ONLY may produce patch data but not write Codex worktree.
-6. L3_ISOLATED_WORKTREE may write only isolated worktree.
-7. L4_DIRECT_WRITE is unavailable.
-8. High-risk policy matches return require_approval, not allow.
+PolicyEngine::review_diff(ArtifactPolicy)    -> registers reasonix.review_diff at L1_DIFF_REVIEW
+PolicyEngine::evaluate(RuntimeOperationRequest) -> checks operation, permission, paths, network
+ArtifactPolicy                              -> path allowlist/denylist with glob matching
 ```
 
-### 10.4 Runtime Gates
+### 10.2 Default Policy (Code-Level)
 
-| Operation | Required Policy Checks |
-|---|---|
-| `call_reasonix_tool` | allowed tool, permission level, artifact paths, budget |
-| `route_reasonix_project` | tenant/user, realpath repo root, worktree, base branch, config hash, policy hash, schema family, runtime version |
-| `route_reasonix_session` | project_key, session_key, task_namespace, lane, permission, policy hash, runtime version |
-| `freeze_snapshot` | base revision, artifact hashes, read scope |
-| `write_worktree` | worktree write lock, task namespace, state, policy |
-| `read_artifact` | read allowlist, read denylist, path normalization |
-| `write_artifact` | write allowlist, write denylist |
-| `run_shell` | shell allowlist, argv parser, permission level |
-| `open_network` | network allowlist, approval state |
-| `apply_patch_transaction` | patch safety report, approval triggers, transaction state |
-| `reuse_cache_result` | schema, policy hash, projection hash, runtime version |
+From `kernel/mod.rs` `RuntimeKernel::initialize()`:
 
-## 11. Runtime Composition Rules
+```rust
+ArtifactPolicy::new(&repo_root)
+    .allow_read([
+        ".agent/context/**",
+        ".agent/diffs/**",
+        ".agent/logs/**",
+        "docs/**",
+        "crates/**",
+        "packages/**",
+        "schemas/**",
+    ])
+    .allow_write([".agent/results/**", ".agent/logs/**"])
+    .deny([".agent/secrets/**", ".git/**"])
+```
+
+### 10.3 Hard Requirements (Implemented)
+
+```text
+1. Denylist wins over allowlist.                   -> ArtifactPolicy evaluates deny first
+2. Path normalization happens before policy match.  -> canonical/mod.rs
+3. Network default is deny.                         -> network=true -> reason added
+4. L1_DIFF_REVIEW is the only active level.         -> review_diff factory
+```
+
+## 11. Runtime Composition Rules (Implemented)
 
 ### 11.1 Ordering
 
-```text
-1. Schema request validation
-2. State gate
-3. Policy gate
-4. Side effect
-5. Schema result validation
-6. State commit
-7. Audit write
-```
-
-State and policy must be checked before side effects. Result schema validation must happen before state commit.
-
-### 11.2 Decision Merge
-
-If engines disagree:
+From `RuntimeKernel.evaluate_operation()`:
 
 ```text
-deny beats require_approval
-require_approval beats allow
-retryable_error beats allow
-fatal_error beats all except deny caused by explicit policy
+1. evaluate_state (task_id)          -> allow/deny + reasons
+2. policy_engine.evaluate (request)  -> allow/deny + reasons
+3. merge_decisions (state, policy)   -> final RuntimeDecisionValue
+4. persist_runtime_decision_with_audit  -> SQLite transaction
+5. persist_running_state (if allow)  -> Created->Running transition
 ```
 
-### 11.3 Audit
+### 11.2 Decision Merge (Implemented)
 
-Every runtime decision emits:
+From `RuntimeKernel::merge_decisions()`:
 
 ```text
-runtime_decision_recorded
+policy=Deny       -> Deny
+any=FatalError    -> FatalError
+any=Deny          -> Deny
+any=RequireApproval -> RequireApproval
+any=RetryableError  -> RetryableError
+otherwise         -> Allow
 ```
 
-Denied decisions also emit:
+### 11.3 Audit (Implemented)
 
-```text
-runtime_denied
-```
+Every runtime decision emits one `audit_event` row with type
+`runtime_decision_{allow|deny|fatal_error|...}`.
+The `audit_events` table has triggers that reject UPDATE and DELETE.
 
-## 12. Minimal Runtime Kernel Interface
+## 12. Runtime Decision Payload
 
-```json
-{
-  "schema_version": "runtime_operation_request_v1",
-  "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "operation": "call_reasonix_tool",
-  "expected_state": "testing",
-  "next_state": "delegating_to_reasonix",
-  "permission_level": "L1_DIFF_REVIEW",
-  "payload_schema": "review_result_v1",
-  "routing": {
-    "project_key_hash": "sha256:...",
-    "session_key_hash": "sha256:...",
-    "task_namespace": "TASK-001:CODEX-001:worktree-001:abc123",
-    "codex_session_id": "CODEX-001",
-    "snapshot_id": "SNAP-001",
-    "base_revision": "abc123",
-    "lane": "review",
-    "static_prefix_hash": "sha256:..."
-  },
-  "resources": {
-    "tool_name": "reasonix.review_diff",
-    "paths": [
-      ".agent/context/TASK-001.context.md",
-      ".agent/diffs/TASK-001.codex.diff"
-    ]
-  }
-}
-```
-
-Runtime decision:
+Actual shape from `kernel/mod.rs` `RuntimeDecision::to_payload()`:
 
 ```json
 {
   "schema_version": "runtime_decision_v1",
   "task_id": "TASK-001",
-  "request_id": "REQ-001",
-  "operation": "call_reasonix_tool",
+  "operation": "reasonix.review_diff",
   "decision": "allow",
   "engine_results": {
-    "schema": "allow",
     "state": "allow",
     "policy": "allow"
   },
-  "reasons": [],
-  "audit_event_id": "AUD-001"
+  "reasons": []
 }
 ```
 
 ## 13. Runtime Error Codes
 
-```text
-runtime_schema_invalid_request
-runtime_schema_invalid_result
-runtime_state_transition_denied
-runtime_policy_denied
-runtime_human_approval_required
-runtime_budget_exceeded
-runtime_patch_transaction_denied
-runtime_cache_reuse_denied
-runtime_project_route_denied
-runtime_session_route_denied
-runtime_snapshot_mismatch
-runtime_task_namespace_mismatch
-runtime_worktree_write_lock_denied
-runtime_reasonix_memory_used_as_evidence
-runtime_unknown_operation
-runtime_engine_failure
-```
-
-## 14. Bootstrap Order
-
-Safe runtime construction order:
+Implemented in the Rust worker (`main.rs`):
 
 ```text
-1. Schema Enforcement Layer
-2. State Machine Runtime Engine
-3. Policy Execution Engine
-4. Executable runtime canonicalization and matcher rules
-5. Audit writer
-6. Runtime Kernel composition
-7. Read-only reasonix.review_diff path
-8. Reasonix Project / Session Lane Router
-9. Context Projector integration
-10. Parallel read-only fan-out
-11. Patch Safety Checker
-12. Patch Transaction Model
-13. performance_review benchmark/profiling enforcement
+-32700  Parse error
+-32600  Invalid Request
+-32601  Method not found
+-32602  Invalid params
+-32008  runtime_unavailable
+-32010  runtime_internal_error
 ```
 
-Patch generation must remain disabled until steps 1-12 are implemented.
+Adapter-level error codes (14 codes across 6 layers) are defined in
+`error-taxonomy.ts`.
 
-## 15. Runtime Conformance Tests
-
-Minimum test cases:
+## 14. Framework Status After This Layer
 
 ```text
-1. illegal transition is denied before side effect
-2. invalid Reasonix output blocks Codex decision
-3. path traversal is denied before file read
-4. denylist beats allowlist
-5. shell argv not in allowlist is denied
-6. network request denied by default
-7. waiting_for_approval blocks patch apply
-8. complete blocked by required verification gap
-9. schema shim emits audit event
-10. cached result rejected after policy_hash change
-11. patch apply rejected without patch_safety_report_v1 pass
-12. performance claim remains unverified without benchmark/profiling evidence
-13. patch tool cannot route to read-only session lane
-14. cross-lane result dependency rejected unless explicit artifact/task_state input exists
-15. task namespace mismatch invalidates Reasonix result
-16. snapshot mismatch invalidates Reasonix result
-17. patch transaction denied while worktree write lock is held
-18. cross-project session reuse attempt is denied
-19. cross-project result cache hit is denied
-20. same-worktree write attempts serialize through worktree write lock
-21. Reasonix memory/history cannot satisfy verification evidence requirement
-22. MVP session_key includes task_id and prevents cross-task lane reuse
+Design direction:              complete
+Deterministic runtime spec:    complete (06-executable-runtime-details.md)
+Runtime enforcement design:    complete (this document)
+v1 runtime implementation:     complete (Rust RuntimeKernel + JSON-RPC Worker + TS client)
+Autonomous patch operation:    blocked (requires patch safety, approval, transaction, verification gates)
 ```
 
-## 16. Framework Status After This Layer
+The v1 implementation exercises this runtime contract through:
+- `RuntimeKernel::evaluate_operation` (kernel/mod.rs)
+- JSON-RPC 2.0 stdio Worker (coagent-runtime-worker/main.rs)
+- TypeScript RuntimeWorkerClient (RuntimeWorkerClient.ts)
+- MCP adapter integration (adapter.ts)
+- Mock `reasonix.review_diff` vertical slice (MockRunner)
 
-With this layer specified:
-
-```text
-Design direction: complete
-Deterministic runtime spec: complete
-Runtime enforcement design: complete
-v1 runtime implementation: complete for Rust pre-delegation-gated read-only review_diff path
-Autonomous patch operation: blocked until patch safety, approval, transaction, and verification gates exist
-```
-
-The v1 implementation now exercises this runtime contract through the Rust RuntimeKernel, JSON-RPC stdio worker, TypeScript worker client, and mock `reasonix.review_diff` vertical slice. It should not be operated in autonomous patch-generating mode until the post-v1 patch gates and conformance tests pass.
-
-
+It should not be operated in autonomous patch-generating mode until the
+post-v1 patch gates and conformance tests pass.

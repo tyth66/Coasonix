@@ -316,7 +316,3 @@ fn cache_corruption_denies_reuse_only() {
         .write_audit_event(&audit("TASK-cache", "cache_corruption_detected"))
         .expect("store remains usable after corrupt cache metadata");
 }
-
-
-
-

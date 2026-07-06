@@ -5,7 +5,7 @@ use std::{
 
 use coagent_runtime_core::{
     kernel::{AuditEvent, RuntimeConfig, RuntimeKernel},
-    policy::{CommandInvocation, PermissionLevel, ResourceSet, RuntimeOperationRequest},
+    policy::{PermissionLevel, ResourceSet, RuntimeOperationRequest},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -35,7 +35,6 @@ struct JsonRpcRequest {
 #[derive(Debug, Deserialize)]
 struct InitializeParams {
     repo_root: PathBuf,
-    agent_executable: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +54,6 @@ struct WorkerResources {
     write_paths: Vec<String>,
     #[serde(default)]
     network: bool,
-    command: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,7 +134,6 @@ impl Worker {
             serde_json::from_value(params).map_err(|_| invalid_params())?;
         let kernel = RuntimeKernel::initialize(RuntimeConfig {
             repo_root: params.repo_root,
-            agent_executable: params.agent_executable,
         })
         .map_err(|_| runtime_unavailable())?;
         self.kernel = Some(kernel);
@@ -158,7 +155,6 @@ impl Worker {
                 read_paths: params.resources.read_paths,
                 write_paths: params.resources.write_paths,
                 network: params.resources.network,
-                command: params.resources.command.map(CommandInvocation::Argv),
             },
         });
         Ok(decision.to_payload())
@@ -259,5 +255,3 @@ fn runtime_internal_error() -> JsonRpcError {
         message: "runtime_internal_error",
     }
 }
-
-

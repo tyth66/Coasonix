@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { RuntimeWorkerError } from "../worker/client";
+import { RuntimeWorkerError } from "../runtime/RuntimeWorkerClient";
 import { ERROR_CODES, errorLayerForCode } from "../agent/error-taxonomy";
 import {
   BACKEND_NEUTRAL_REVIEW_DIFF_ALIAS,
@@ -572,6 +572,4 @@ function reviewResult(taskId: string, requestId: string) {
     confidence: 0.9,
   };
 }
-
-
 

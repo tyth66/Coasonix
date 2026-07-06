@@ -659,6 +659,3 @@ const MIGRATIONS: &[(&str, &str)] = &[
         );",
     ),
 ];
-
-
-

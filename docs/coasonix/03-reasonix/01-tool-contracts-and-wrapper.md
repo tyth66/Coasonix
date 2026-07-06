@@ -35,7 +35,7 @@ artifacts.test_log_path
 focus
 constraints
 budget
-permission_level
+permission_level (always L1_DIFF_REVIEW)
 ```
 
 These fields are how Codex asks Coagent to delegate a safe task. They are not
@@ -43,7 +43,7 @@ fields Reasonix must echo back.
 
 ## Reasonix Task Input
 
-Before calling Reasonix, Coagent should translate the MCP arguments into a task
+Before calling Reasonix, Coagent translates the MCP arguments into a task
 that is natural for a reviewing agent:
 
 ```text
@@ -104,20 +104,39 @@ stderr
 Coagent may wrap Reasonix pure review data into MCP structures:
 
 ```text
-content[]
-structuredContent
-_meta
-isError
+content[]              -> MCP text content
+structuredContent      -> the validated review result object
+_meta                  -> diagnostics, error codes, layer info
+isError                -> true for errors, false for success
 ```
 
 Coagent may use internal ids and diagnostics to protect the call path. Those
 fields belong to wrapper metadata and audit records, not to Reasonix review.
 
-## Transitional Implementation State
+## Transitional Implementation State (as of 2026-07-06)
 
-The current code still uses a `review_result_v1` payload that includes
-system-envelope fields (`schema_version`, `task_id`, `request_id`, `status`)
-in the mock and test fixtures. This is a known transitional state.
+The current code path is operational but transitional:
+
+**What is implemented:**
+- `mcp/tools/review-diff.ts`: ToolHandler with full input/output validation
+- `mcp/adapter.ts`: Complete call flow — normalize -> runtime gate -> agent -> validate -> wrap
+- `schemas/coagent-v1.schema.json`: review_diff_input_v1 + review_result_v1 contracts
+- `agent/worker-contract.ts`: Agent worker contract with reviewResultSchemaError() validation
+
+**What is transitional:**
+- The mock backend (`MockRunner`) emits a hardcoded `review_result_v1` JSON
+  with envelope fields: `schema_version`, `task_id`, `request_id`, `status`
+- The adapter checks `task_id`/`request_id` identity match between request
+  and Reasonix output; this identity tracking currently relies on these
+  envelope fields being present in the result
+- The schema fixture still requires `schema_version`, `task_id`, `request_id`,
+  `status` in `review_result_v1`
+
+**Target state (Task 2 of active plan):**
+- Move `task_id`/`request_id` tracking to Coagent-internal wrapper state
+- Remove `schema_version`, `task_id`, `request_id`, `status` from Reasonix
+  result contract
+- Reasonix mock emits only review data (verdict, summary, findings, etc.)
 
 The active migration plan is:
 
@@ -128,11 +147,10 @@ The active migration plan is:
 ## Acceptance Criteria for the Next Pass
 
 ```text
-1. Reasonix mock emits only review data.
+1. Reasonix mock emits only review data (no envelope fields).
 2. Adapter wraps review data into MCP result without requiring Reasonix to echo ids.
 3. Runtime gate still happens before Reasonix invocation.
 4. Worker diagnostics never become review content.
 5. Tests prove malformed review data is rejected.
 6. Docs and schema fixture match the pure review result.
 ```
-

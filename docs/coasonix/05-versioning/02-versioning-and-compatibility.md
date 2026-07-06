@@ -1,14 +1,17 @@
 # Versioning and Compatibility Strategy
 
-> **设计规格（Design Specification）**：此文档描述的是 post-v1 兼容性策略。
-> 当前 v1 无多版本共存场景，兼容性规则尚未被代码执行。
+> **Design Specification**: This document describes post-v1 compatibility
+> strategy. v1 has no multi-version coexistence, no version negotiation,
+> no deprecation mechanism. Compatibility rules are not enforced by code.
 
-Coagent has four versioned surfaces: Codex contract, Wrapper protocol, Reasonix runtime contract, and Schema/tool contract. This file defines compatibility rules so the system does not gradually fragment.
+Coagent has four versioned surfaces: Codex contract, Wrapper protocol,
+Reasonix runtime contract, and Schema/tool contract. This file defines
+compatibility rules so the system does not gradually fragment.
 
-## 1. Versioned Surfaces
+## 1. Versioned Surfaces (Design Model)
 
 ```text
-Coagent_framework_version
+coagent_framework_version
 wrapper_protocol_version
 reasonix_runtime_version
 tool_contract_version
@@ -19,7 +22,7 @@ reasonix_project_routing_version
 reasonix_session_lane_version
 ```
 
-## 2. Compatibility Matrix
+## 2. Compatibility Matrix (Design Model)
 
 | Producer | Consumer | Compatibility Rule |
 |---|---|---|
@@ -32,109 +35,52 @@ reasonix_session_lane_version
 | Session Router | Reasonix | project_key and session_key compatibility |
 | Session Router | Cache | lane and static_prefix_hash compatibility |
 
-## 3. Capability Negotiation
+## 3. Capability Negotiation (Design Model)
 
-Initialize response must include:
+Initialize response target shape:
 
 ```json
 {
-  "Coagent_framework_version": "0.2",
+  "coagent_framework_version": "0.2",
   "wrapper_protocol_version": "1.0.0",
-  "reasonix_project_routing_version": "1.0.0",
-  "reasonix_session_lane_version": "1.0.0",
-  "supported_schema_families": ["Coagent.v1"],
-  "supported_session_lanes": ["review", "security", "debug", "performance", "architecture", "patch"],
+  "supported_schema_families": ["coagent.v1"],
   "supported_tools": {
-    "reasonix.review_diff": ["review_result_v1"],
-    "reasonix.performance_review": ["performance_review_v1"]
+    "reasonix.review_diff": ["review_result_v1"]
   },
   "deprecated_tools": [],
   "compatibility_mode": "strict"
 }
 ```
 
-## 4. Tool Deprecation
+**Current v1 reality**: The MCP server returns a minimal initialize response
+with `protocolVersion` and `capabilities: { tools: {} }`. No version
+negotiation, tool deprecation, or schema family advertisement.
+
+## 4. Tool Deprecation (Design Model)
 
 Deprecation phases:
-
 ```text
-active
-deprecated
-disabled_by_default
-removed
+active -> deprecated -> disabled_by_default -> removed
 ```
 
-Rules:
+## 5. Shim Rules (Design Model)
+
+Wrapper may apply compatibility shim only when deterministic and safe.
+Wrapper must reject when security, permission, path, or identity fields
+are missing.
+
+## 6. Upgrade / Rollback Rules (Design Model)
+
+Post-v1. No runtime version switching exists in v1.
+
+## 7. Current v1 Reality
 
 ```text
-1. deprecated tools remain schema-valid.
-2. disabled_by_default tools require explicit config.
-3. removed tools must not appear in tools/list.
-4. replacement tool must be documented before removal.
-5. deprecation emits audit warning when called.
+1. One tool: reasonix.review_diff
+2. One schema family: review_diff_input_v1 / review_result_v1
+3. No version negotiation
+4. No deprecation
+5. No shims
+6. Schema fixture is a test contract, not runtime-loaded
+7. Compatibility mode: strict by default (no alternatives exist)
 ```
-
-## 5. Shim Rules
-
-Wrapper may apply compatibility shim only when:
-
-```text
-1. source schema is known.
-2. target schema is known.
-3. transformation is deterministic.
-4. no security, permission, path, or decision field is dropped.
-5. audit event schema_shim_applied is emitted.
-```
-
-Wrapper must reject when:
-
-```text
-required security field missing
-permission_level missing
-task_id or request_id mismatch
-unknown schema_version
-unknown session lane
-project_key mismatch
-session_key mismatch
-lossy transformation required
-```
-
-## 6. Upgrade Rules
-
-```text
-1. Schema minor additions must be optional.
-2. Required field changes require major version.
-3. Enum removal requires major version.
-4. Tool behavior semantic changes require tool contract version bump.
-5. Policy tightening may happen in minor version.
-6. Policy loosening requires explicit human approval in production profiles.
-7. Session lane routing semantic changes require reasonix_session_lane_version bump.
-8. Project key component changes require reasonix_project_routing_version bump.
-```
-
-## 7. Rollback Rules
-
-```text
-1. Wrapper rollback must preserve audit readability.
-2. Codex may call older wrapper only if schema family is supported.
-3. Cached results from newer schema must not be served to older Codex.
-4. Rollback must invalidate result cache if prompt, schema, or policy changed.
-5. Rollback must invalidate session lane reuse if routing version changed.
-```
-
-## 8. Version Drift Detection
-
-Required checks:
-
-```text
-tools/list schema matches registry
-enabled_tools exists in registry
-schema file version matches docs
-policy_version hash matches audit events
-Wrapper prompt template hash matches cache key
-Reasonix runtime version recorded in every result metadata
-project_key hash recorded for every Reasonix call
-session_key hash and lane recorded for every Reasonix call
-patch-capable tools do not route to read-only lanes
-```
-

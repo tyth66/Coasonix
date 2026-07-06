@@ -90,8 +90,7 @@ fn initialize(worker: &mut WorkerProcess, repo: &PathBuf) -> Value {
         "id": "REQ-init",
         "method": "runtime.initialize",
         "params": {
-            "repo_root": repo,
-            "agent_executable": "reasonix"
+            "repo_root": repo
         }
     }))
 }
@@ -167,8 +166,7 @@ fn invalid_params_are_rejected() {
         "id": "REQ-invalid",
         "method": "runtime.initialize",
         "params": {
-            "repo_root": 42,
-            "agent_executable": "reasonix"
+            "repo_root": 42
         }
     }));
 
@@ -194,8 +192,7 @@ fn evaluate_operation_returns_runtime_decision_v1() {
             "resources": {
                 "read_paths": [".agent/diffs/current.diff"],
                 "write_paths": [".agent/results/review.json"],
-                "network": false,
-                "command": ["reasonix", "review-diff"]
+                "network": false
             }
         }
     }));
@@ -226,8 +223,7 @@ fn policy_denial_still_returns_runtime_decision_result() {
             "resources": {
                 "read_paths": [".agent/diffs/current.diff"],
                 "write_paths": [".agent/results/review.json"],
-                "network": true,
-                "command": ["reasonix", "review-diff"]
+                "network": true
             }
         }
     }));
@@ -293,6 +289,3 @@ fn worker_shutdown_is_explicit() {
     assert_eq!(response["result"]["shutdown"], true);
     assert!(status.success(), "worker should exit successfully");
 }
-
-
-

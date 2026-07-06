@@ -29,6 +29,20 @@ Reasonix must not return Coagent runtime state, schema validation payloads,
 worker diagnostics, backend profile data, task routing metadata, or MCP
 transport details. Those are Coagent internals.
 
+## Architecture
+
+```text
+Codex MCP Host
+  -> TypeScript reasonix-expert MCP Adapter (packages/reasonix-expert-mcp)
+      -> managed Rust Runtime Worker (crates/coagent-runtime-worker)
+          -> Rust Runtime Core (crates/coagent-runtime-core)
+      -> Reasonix CLI / mock worker
+```
+
+Two crates (Rust) + one package (TypeScript/Bun). The adapter calls the Rust
+Runtime Worker over JSON-RPC 2.0 stdio before delegating to Reasonix.
+SQLite stores append-only audit records under `.agent/coagent.sqlite`.
+
 ## Implementation Status
 
 ### Completed
@@ -36,22 +50,27 @@ transport details. Those are Coagent internals.
 ```text
 MCP registration/setup                   (codex/setup.ts, codex/health.ts)
 MCP stdio server                         (mcp/server.ts)
-inline tools/list inputSchema           (mcp/tools.ts)
-Rust pre-Reasonix runtime gate           (crates/Coagent-runtime-core)
-  - State engine (Created to Running to Completed/Failed)
+inline tools/list inputSchema            (mcp/tools/review-diff.ts)
+Pluggable tool handler architecture      (strategy pattern, mcp/adapter.ts)
+Multi-operation PolicyEngine registry    (policy/mod.rs)
+Rust pre-Reasonix runtime gate           (crates/coagent-runtime-core)
+  - State engine (Created -> Running -> Completed/Failed)
   - Policy engine (operation, permission, path, argv, network)
-  - SQLite append-only audit (10 tables, WAL, FK)
+  - Artifact policy (path allowlist/denylist with glob matching)
+  - SQLite append-only audit (10 tables, WAL, FK, triggers reject UPDATE/DELETE)
   - JSON Schema validation + duplicate-key detection (schema/mod.rs)
-Rust JSON-RPC stdio Runtime Worker       (crates/coagent-runtime-worker)
-TypeScript Runtime Worker client         (worker/client.ts)
-mock review_diff vertical slice          (reasonix/mock-worker.ts)
-healthcheck / conformance / error taxonomy / backend profiles
+  - Canonical JSON/path normalization (canonical/mod.rs)
+Rust JSON-RPC stdio Runtime Worker       (crates/coagent-runtime-worker, 4 methods)
+TypeScript Runtime Worker client         (runtime/RuntimeWorkerClient.ts)
+mock review_diff vertical slice          (621-byte echo worker via MockRunner)
+healthcheck / conformance / error taxonomy (14 codes across 6 layers)
+backend profiles                         (mock, reasonix)
 ```
 
 ### Active Transition
 
-The current review_result_v1 contract still includes system envelope fields
-(schema_version, task_id, request_id, status) that belong in Coagent
+The current `review_result_v1` contract still includes system envelope fields
+(`schema_version`, `task_id`, `request_id`, `status`) that belong in Coagent
 wrapper metadata, not in Reasonix review answer. The active plan moves
 these fields out of the Reasonix result payload.
 
@@ -62,7 +81,10 @@ additional tools beyond review_diff
 patch application / write autonomy
 human approval UI
 remote transport / HTTP / daemon
-real (non-mock) backend bridge
+real (non-mock) Reasonix backend bridge
+context projection
+cache reuse (SQLite cache_entries table exists but reuse_enabled always 0)
+performance/security/architecture review tools
 ```
 
 ## Forward Plan
@@ -82,5 +104,3 @@ python -m json.tool schemas/coagent-v1.schema.json > $null
 cargo fmt --all -- --check
 git diff --check
 ```
-
-

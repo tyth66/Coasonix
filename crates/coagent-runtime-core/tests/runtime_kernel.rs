@@ -6,7 +6,7 @@ use std::{
 
 use coagent_runtime_core::{
     kernel::{AuditEvent, RuntimeConfig, RuntimeDecisionValue, RuntimeKernel, engine_results},
-    policy::{CommandInvocation, PermissionLevel, ResourceSet, RuntimeOperationRequest},
+    policy::{PermissionLevel, ResourceSet, RuntimeOperationRequest},
     state::{TaskState, TaskStateValue},
     storage::RuntimeStore,
 };
@@ -23,10 +23,7 @@ fn temp_repo(name: &str) -> PathBuf {
 }
 
 fn config(repo_root: PathBuf) -> RuntimeConfig {
-    RuntimeConfig {
-        repo_root,
-        agent_executable: "agent".to_string(),
-    }
+    RuntimeConfig { repo_root }
 }
 
 fn allowed_request(task_id: &str, request_id: &str) -> RuntimeOperationRequest {
@@ -39,24 +36,12 @@ fn allowed_request(task_id: &str, request_id: &str) -> RuntimeOperationRequest {
             read_paths: vec![".agent/diffs/current.diff".to_string()],
             write_paths: vec![".agent/results/review.json".to_string()],
             network: false,
-            command: Some(CommandInvocation::Argv(vec![
-                "agent".to_string(),
-                "review-diff".to_string(),
-            ])),
         },
     }
 }
 
 #[test]
-fn kernel_initializes_without_schema_registry_on_the_runtime_path() {
-    let repo = temp_repo("schema-free");
-    let kernel = RuntimeKernel::initialize(config(repo));
-
-    assert!(kernel.is_ok());
-}
-
-#[test]
-fn allow_decision_contains_state_policy_results_without_schema_gate() {
+fn kernel_initializes_and_allows_review_diff() {
     let repo = temp_repo("allow");
     let mut kernel = RuntimeKernel::initialize(config(repo)).expect("initialize kernel");
 
@@ -91,7 +76,7 @@ fn policy_denial_beats_state_allow_and_is_persisted() {
     let store = RuntimeStore::initialize(repo).expect("reopen store");
     assert_eq!(
         store
-            .runtime_decision_count("TASK-policy-deny", RuntimeDecisionValue::Deny.into())
+            .runtime_decision_count("TASK-policy-deny", RuntimeDecisionValue::Deny)
             .expect("count persisted deny"),
         1
     );
@@ -204,7 +189,3 @@ fn decision_merge_precedence_matches_blueprint() {
         RuntimeDecisionValue::Deny
     );
 }
-
-
-
-

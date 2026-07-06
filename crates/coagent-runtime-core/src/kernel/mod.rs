@@ -15,7 +15,6 @@ pub use crate::policy::RuntimeDecisionValue;
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     pub repo_root: PathBuf,
-    pub agent_executable: String,
 }
 
 #[derive(Debug)]
@@ -75,7 +74,7 @@ impl RuntimeKernel {
             ])
             .allow_write([".agent/results/**", ".agent/logs/**"])
             .deny([".agent/secrets/**", ".git/**"]);
-        let policy_engine = PolicyEngine::review_diff(config.agent_executable, artifact_policy);
+        let policy_engine = PolicyEngine::review_diff(artifact_policy);
 
         Ok(Self {
             store,
@@ -105,7 +104,7 @@ impl RuntimeKernel {
             audit_event_id: None,
         };
 
-        match self.persist_runtime_decision(&decision, policy_result.command_hash) {
+        match self.persist_runtime_decision(&decision) {
             Ok(audit) => {
                 decision.audit_event_id = Some(audit.id);
                 if decision.decision == RuntimeDecisionValue::Allow {
@@ -183,7 +182,6 @@ impl RuntimeKernel {
     fn persist_runtime_decision(
         &self,
         decision: &RuntimeDecision,
-        command_hash: Option<String>,
     ) -> Result<AuditEventRecord, StoreError> {
         let record = RuntimeDecisionRecord {
             task_id: decision.task_id.clone(),
@@ -191,7 +189,7 @@ impl RuntimeKernel {
             operation: decision.operation.clone(),
             decision: decision.decision,
             reasons: decision.reasons.clone(),
-            command_hash,
+            command_hash: None,
         };
         let audit = AuditEventInput {
             task_id: decision.task_id.clone(),
@@ -258,4 +256,3 @@ fn runtime_decision_to_str(value: RuntimeDecisionValue) -> &'static str {
         RuntimeDecisionValue::FatalError => "fatal_error",
     }
 }
-
