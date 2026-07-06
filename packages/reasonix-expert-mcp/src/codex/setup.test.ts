@@ -8,7 +8,7 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const runtimeWorkerName =
   process.platform === "win32" ? "coagent-runtime-worker.exe" : "coagent-runtime-worker";
 const mockWorkerName =
-  process.platform === "win32" ? "coagent-mock-worker.cmd" : "coagent-mock-worker";
+  process.platform === "win32" ? "coasonix-mock-worker.cmd" : "coasonix-mock-worker";
 
 describe("Codex MCP setup", () => {
   test("builds a protocol-clean codex mcp add command with stable paths", () => {
@@ -128,10 +128,10 @@ describe("Codex MCP setup", () => {
         if (args[0] === "mcp" && args[1] === "add" && args[2] === "coagent") {
           return { exitCode: 0, stdout: "Added global MCP server 'coagent'.", stderr: "" };
         }
-        if (args.join(" ") === "mcp get Coagent") {
+        if (args[0] === "mcp" && args[1] === "get" && args[2] === "coagent") {
           return { exitCode: 0, stdout: "coagent\n", stderr: "" };
         }
-        if (args.join(" ") === "mcp list") {
+        if (args[0] === "mcp" && args[1] === "list") {
           return { exitCode: 0, stdout: "coagent enabled\n", stderr: "" };
         }
         return { exitCode: 1, stdout: "", stderr: `unexpected command: ${args.join(" ")}` };
@@ -239,6 +239,7 @@ describe("Codex MCP setup", () => {
     expect(stdout).toContain("--profile");
   });
 });
+
 
 
 

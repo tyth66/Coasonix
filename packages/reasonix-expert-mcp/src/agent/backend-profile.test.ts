@@ -12,8 +12,8 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 
 describe("backend profiles", () => {
   test.each([
-    ["mock", "coagent-mock-worker"],
-    ["conformance", "coagent-mock-worker"],
+    ["mock", "coasonix-mock-worker"],
+    ["conformance", "coasonix-mock-worker"],
   ] satisfies Array<[BackendProfile, string]>)("%s selects a repo-local worker command", (profile, executable) => {
     const resolved = resolveBackendProfile({ profile, repoRoot, env: {} });
 
@@ -61,6 +61,7 @@ describe("backend profiles", () => {
     expect(resolved.timeoutMs).toBe(20_000);
   });
 });
+
 
 
 

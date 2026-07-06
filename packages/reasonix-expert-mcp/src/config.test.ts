@@ -6,9 +6,9 @@ describe("loadServerConfig", () => {
   test("does not require COAGENT_SCHEMA_PATH for the runtime architecture path", () => {
     const config = loadServerConfig({
       COAGENT_REPO_ROOT: "D:\\work\\target-repo",
-      COAGENT_RUNTIME_WORKER: "D:\\Coagent\\target\\debug\\Coagent-runtime-worker.exe",
+      COAGENT_RUNTIME_WORKER: "D:\\Coagent\\target\\debug\\coagent-runtime-worker.exe",
       COAGENT_AGENT_COMMAND_JSON: JSON.stringify([
-        "D:\\Coagent\\bin\\Coagent-mock-worker.cmd",
+        "D:\\Coagent\\bin\\coasonix-mock-worker.cmd",
         "review-diff",
       ]),
     });
@@ -18,6 +18,7 @@ describe("loadServerConfig", () => {
     expect(config.agentCommand[1]).toBe("review-diff");
   });
 });
+
 
 
 

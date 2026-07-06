@@ -44,8 +44,8 @@ export function buildCodexMcpAddCommand(options: SetupOptions): CommandInvocatio
   const runtimeWorker = resolve(
     repoRoot,
     process.platform === "win32"
-      ? "target/debug/Coagent-runtime-worker.exe"
-      : "target/debug/Coagent-runtime-worker",
+      ? "target/debug/coagent-runtime-worker.exe"
+      : "target/debug/coagent-runtime-worker",
   );
   const backend = resolveBackendProfile({
     profile: options.profile ?? "mock",
@@ -122,8 +122,8 @@ async function ensureRuntimeWorker(
   const workerPath = resolve(
     repoRoot,
     process.platform === "win32"
-      ? "target/debug/Coagent-runtime-worker.exe"
-      : "target/debug/Coagent-runtime-worker",
+      ? "target/debug/coagent-runtime-worker.exe"
+      : "target/debug/coagent-runtime-worker",
   );
   if (existsSync(workerPath)) {
     return;
@@ -214,6 +214,7 @@ Example:
       process.exit(1);
     });
 }
+
 
 
 

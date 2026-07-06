@@ -222,8 +222,8 @@ async function ensureRuntimeWorkerForHealth(
     resolve(
       options.repoRoot,
       process.platform === "win32"
-        ? "target/debug/Coagent-runtime-worker.exe"
-        : "target/debug/Coagent-runtime-worker",
+        ? "target/debug/coagent-runtime-worker.exe"
+        : "target/debug/coagent-runtime-worker",
     );
   if (options.runtimeWorker || existsSync(workerPath) || options.buildRuntimeWorker === false) {
     return existsSync(workerPath)
@@ -464,6 +464,7 @@ Example:
       process.exit(1);
     });
 }
+
 
 
 

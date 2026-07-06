@@ -24,7 +24,7 @@ describe("Agent Worker Contract", () => {
     const command = [
       resolve(
         repoRoot,
-        process.platform === "win32" ? "bin/Coagent-mock-worker.cmd" : "bin/Coagent-mock-worker",
+        process.platform === "win32" ? "bin/coasonix-mock-worker.cmd" : "bin/coasonix-mock-worker",
       ),
       "review-diff",
     ];
@@ -159,5 +159,6 @@ function validOutput() {
     confidence: 0.9,
   };
 }
+
 
 
