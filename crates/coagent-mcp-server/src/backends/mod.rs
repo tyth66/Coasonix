@@ -1,3 +1,5 @@
+pub mod acp_backend;
+pub mod backend_trait;
 pub mod context;
 pub mod mock;
 pub mod reasonix;
@@ -8,6 +10,12 @@ use coagent_runtime_core::policy::{BackendBinding, ToolDefinition};
 
 use crate::config::BackendId;
 
+// Re-export the new v3 trait and types
+// v3 trait re-exports — used by acp_backend.rs and future tool specs
+pub use backend_trait::{AgentBackend, BackendCapabilities, BackendError, BackendRegistry, BackendRequest, BackendResponse};
+
+// Legacy v2 Backend enum — kept for backward compatibility during transition.
+// New code should use AgentBackend trait via BackendRegistry.
 #[derive(Clone)]
 pub enum Backend {
     Mock,

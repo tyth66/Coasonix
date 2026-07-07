@@ -143,6 +143,7 @@ dependencies = [
 name = "coagent-mcp-server"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "coagent-runtime-core",
  "rmcp",
  "rmcp-macros",
