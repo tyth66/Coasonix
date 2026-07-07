@@ -6,6 +6,7 @@
 - [Runtime](architecture/01-runtime.md) — State machine, policy engine, SQLite audit
 - [MCP Server](architecture/02-mcp-server.md) — rmcp integration, tool definition, backend pluggability
 - [General Agent Runtime Gaps](architecture/03-general-agent-runtime-gaps.md) — Resolved deficits from v1 → v2 architecture refactor
+- [Architecture Backlog (v2.1)](architecture/04-backlog.md) — Concrete implementation issues
 
 ## Architecture Overview (v2)
 

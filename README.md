@@ -86,4 +86,5 @@ cargo clippy --workspace -- -D warnings
 - [Runtime: State, Policy, Audit](docs/coagent/architecture/01-runtime.md)
 - [MCP Server (rmcp)](docs/coagent/architecture/02-mcp-server.md)
 - [General Agent Runtime Gaps](docs/coagent/architecture/03-general-agent-runtime-gaps.md)
+- [Architecture Backlog](docs/coagent/architecture/04-backlog.md) — P1-P8 implementation issues
 - [Documentation Index](docs/coagent/README.md)
