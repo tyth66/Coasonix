@@ -1,5 +1,7 @@
 ﻿pub mod acp_backend;
+pub mod agent_profile;
 pub mod backend_trait;
+
 pub mod context;
 pub mod mock;
 pub mod reasonix;

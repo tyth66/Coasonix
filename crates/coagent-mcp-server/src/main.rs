@@ -20,6 +20,7 @@ mod pipeline;
 mod tools;
 
 use backends::{
+    agent_profile::AgentProfile,
     acp_backend::{AcpBackend, MockBackend},
     backend_trait::{BackendRegistry, BackendSelector, DefaultBackendSelector},
     context::ContextProjection,
@@ -153,13 +154,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     backend_registry.register(Box::new(MockBackend::new("mock")));
 
     let reasonix_backend: std::sync::Arc<dyn AgentBackend> = std::sync::Arc::new(
-        AcpBackend::new("reasonix", &config.reasonix_model, config.repo_root.clone()),
+        AcpBackend::new(AgentProfile::reasonix(config.repo_root.clone(), &config.reasonix_model)),
     );
-    backend_registry.register(Box::new(AcpBackend::new(
-        "reasonix",
-        &config.reasonix_model,
-        config.repo_root.clone(),
-    )));
+    backend_registry.register(Box::new(AcpBackend::new(AgentProfile::reasonix(config.repo_root.clone(), &config.reasonix_model))));
 
     // Build ToolSpec registry
     let tool_registry = ToolSpecRegistry::default_registry();

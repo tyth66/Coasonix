@@ -1,31 +1,41 @@
-use std::path::PathBuf;
+﻿use std::path::PathBuf;
 
 use async_trait::async_trait;
 
+use super::agent_profile::AgentProfile;
 use super::backend_trait::{AgentBackend, BackendCapabilities, BackendError, BackendRequest, BackendResponse};
 use super::reasonix::{ReasonixError, ReasonixRunner};
 
-/// An ACP backend wrapping a ReasonixRunner, implementing the AgentBackend trait.
-/// This is the bridge from the v2 Reasonix-specific code to the v3 generic backend model.
+/// An ACP backend driven by an AgentProfile.
 pub struct AcpBackend {
-    id: String,
+    profile: AgentProfile,
     runner: ReasonixRunner,
 }
 
 impl AcpBackend {
-    pub fn new(id: impl Into<String>, model: impl Into<String>, cwd: PathBuf) -> Self {
+    pub fn new(profile: AgentProfile) -> Self {
+        let model = profile
+            .args
+            .iter()
+            .position(|a| a == "--model")
+            .and_then(|i| profile.args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "deepseek-v4-flash".into());
         Self {
-            id: id.into(),
-            runner: ReasonixRunner::new(model, cwd),
+            runner: ReasonixRunner::new(&model, profile.cwd.clone()),
+            profile,
         }
+    }
+
+    /// Legacy constructor for backward compatibility.
+    pub fn with_model(_id: impl Into<String>, model: impl Into<String>, cwd: PathBuf) -> Self {
+        Self::new(AgentProfile::reasonix(cwd, &model.into()))
     }
 }
 
 #[async_trait]
 impl AgentBackend for AcpBackend {
     async fn invoke(&self, request: BackendRequest) -> Result<BackendResponse, BackendError> {
-        // Extract goal and diff_path from context for the Reasonix runner.
-        // In v3, this projection would be handled by ToolSpec.context_projector.
         let goal = &request.goal;
         let diff_path = request
             .context
@@ -66,12 +76,12 @@ impl AgentBackend for AcpBackend {
     }
 
     fn backend_id(&self) -> &str {
-        &self.id
+        &self.profile.backend_id
     }
 
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities {
-            tags: vec!["code.review.diff".into()],
+            tags: self.profile.capabilities.clone(),
             max_tokens: None,
             supports_streaming: true,
         }
@@ -136,8 +146,9 @@ mod tests {
 
     #[test]
     fn acp_backend_registers_with_id() {
-        let backend = AcpBackend::new("reasonix-1", "deepseek-v4-flash", PathBuf::from("."));
-        assert_eq!(backend.backend_id(), "reasonix-1");
+        let profile = AgentProfile::reasonix(PathBuf::from("."), "deepseek-v4-flash");
+        let backend = AcpBackend::new(profile);
+        assert_eq!(backend.backend_id(), "reasonix");
         assert!(backend.capabilities().tags.contains(&"code.review.diff".to_string()));
     }
 }
