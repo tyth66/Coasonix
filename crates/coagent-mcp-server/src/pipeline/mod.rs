@@ -80,6 +80,18 @@ impl RuntimeToolExecutor {
             .validate(self.ctx.tool.input_schema(), &payload);
         if !validation.valid {
             let detail = format_schema_errors(self.ctx.tool.input_schema(), &validation);
+            let audit_task = task_id.clone().unwrap_or_else(|| "pre-gate".into());
+            let _ = self.ctx.kernel.lock().await.write_audit(AuditEvent {
+                task_id: audit_task,
+                event_type: "input_schema_validation_failed".into(),
+                summary: detail.clone(),
+                payload_json: serde_json::json!({
+                    "expected_schema": self.ctx.tool.input_schema(),
+                    "errors": validation.errors.iter().map(|e| {
+                        serde_json::json!({"path": e.path, "message": e.message})
+                    }).collect::<Vec<_>>()
+                }).to_string(),
+            });
             return Err(ErrorData::invalid_params(detail, None));
         }
 
@@ -168,6 +180,17 @@ impl RuntimeToolExecutor {
 
         // ── Stage 5: Validate output ──
         if let Err(e) = validate_output(&backend_output) {
+            let _ = self.ctx.kernel.lock().await.write_audit(AuditEvent {
+                task_id: task_id.clone(),
+                event_type: "output_schema_validation_failed".into(),
+                summary: format!("{}: {}", e.path, e.message),
+                payload_json: serde_json::json!({
+                    "task_id": &task_id,
+                    "request_id": &request_id,
+                    "path": e.path,
+                    "message": e.message
+                }).to_string(),
+            });
             let _ = self.ctx.kernel.lock().await.fail_operation(
                 &task_id,
                 Some(&request_id),
@@ -190,6 +213,19 @@ impl RuntimeToolExecutor {
             .validate(self.ctx.tool.output_schema(), &wrapper_payload);
         if !wrapper_validation.valid {
             let detail = format_schema_errors(self.ctx.tool.output_schema(), &wrapper_validation);
+            let _ = self.ctx.kernel.lock().await.write_audit(AuditEvent {
+                task_id: task_id.clone(),
+                event_type: "wrapper_schema_validation_failed".into(),
+                summary: detail.clone(),
+                payload_json: serde_json::json!({
+                    "task_id": &task_id,
+                    "request_id": &request_id,
+                    "expected_schema": self.ctx.tool.output_schema(),
+                    "errors": wrapper_validation.errors.iter().map(|e| {
+                        serde_json::json!({"path": e.path, "message": e.message})
+                    }).collect::<Vec<_>>()
+                }).to_string(),
+            });
             let _ = self.ctx.kernel.lock().await.fail_operation(
                 &task_id,
                 Some(&request_id),
