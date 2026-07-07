@@ -1,4 +1,4 @@
-/// Structured context projected from the MCP input to the Reasonix prompt.
+﻿/// Structured context projected from the MCP input to the Reasonix prompt.
 ///
 /// Every field from ReviewDiffInput that is meaningful for the review backend
 /// is captured here, so the prompt template can reference them.
@@ -16,6 +16,41 @@ pub struct ContextProjection {
 }
 
 impl ContextProjection {
+
+    /// Build from a ReviewDiffInput (convenience for the review_diff tool).
+    pub fn from_review_diff_input(input: &crate::tools::review_diff::ReviewDiffInput) -> Self {
+        Self {
+            goal: input.goal.clone(),
+            diff_path: input.artifacts.diff_path.clone(),
+            context_path: input.artifacts.context_path.clone(),
+            test_log_path: input.artifacts.test_log_path.clone(),
+            build_log_path: input.artifacts.build_log_path.clone(),
+            focus: input.focus.clone(),
+            constraints: input.constraints.clone(),
+            base_branch: input.repo.base_branch.clone(),
+            working_branch: input.repo.working_branch.clone(),
+        }
+    }
+
+    /// Build a BackendRequest from this context projection.
+    pub fn to_backend_request(&self, operation: &str, output_schema: &str) -> crate::backends::BackendRequest {
+        crate::backends::BackendRequest {
+            goal: self.goal.clone(),
+            operation: operation.to_string(),
+            output_schema: output_schema.to_string(),
+            read_paths: vec![self.diff_path.clone()],
+            context: serde_json::json!({
+                "diff_path": self.diff_path,
+                "context_path": self.context_path,
+                "test_log_path": self.test_log_path,
+                "build_log_path": self.build_log_path,
+                "focus": self.focus,
+                "constraints": self.constraints,
+                "base_branch": self.base_branch,
+                "working_branch": self.working_branch,
+            }),
+        }
+    }
     /// Build from the raw input fields (called by the tool handler).
     #[allow(clippy::too_many_arguments)]
     pub fn from_input(

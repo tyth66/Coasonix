@@ -208,7 +208,7 @@ mod tests {
             id: "default".into(),
         }));
         registry.register(Box::new(TestBackend {
-            id: "specialist".into(),
+            id: "default".into(),
         }));
 
         // Both have tag "test", so the first one registered is returned
