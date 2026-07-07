@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fs,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
@@ -187,7 +187,7 @@ fn evaluate_operation_returns_runtime_decision_v1() {
         "method": "runtime.evaluate_operation",
         "params": {
             "task_id": "TASK-worker-evaluate",
-            "operation": "reasonix.review_diff",
+            "operation": "coagent.review_diff",
             "permission_level": "L1_DIFF_REVIEW",
             "resources": {
                 "read_paths": [".agent/diffs/current.diff"],
@@ -218,7 +218,7 @@ fn policy_denial_still_returns_runtime_decision_result() {
         "method": "runtime.evaluate_operation",
         "params": {
             "task_id": "TASK-worker-policy-deny",
-            "operation": "reasonix.review_diff",
+            "operation": "coagent.review_diff",
             "permission_level": "L1_DIFF_REVIEW",
             "resources": {
                 "read_paths": [".agent/diffs/current.diff"],

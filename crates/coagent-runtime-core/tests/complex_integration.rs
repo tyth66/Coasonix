@@ -1,4 +1,4 @@
-// === AGENT RUNTIME COMPLEX INTEGRATION TESTS ===
+﻿// === AGENT RUNTIME COMPLEX INTEGRATION TESTS ===
 // Covers: full FSM lifecycle, approval gates, event replay, sandbox,
 // ToolRegistry concurrency, schema edge cases.
 
@@ -54,7 +54,7 @@ fn full_fsm_lifecycle_queued_to_completed_with_blocked() {
     let decision = kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-full".into(),
         request_id: Some("REQ-full-1".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/test.diff".into()],
@@ -91,7 +91,7 @@ fn full_fsm_lifecycle_queued_to_completed_with_blocked() {
 
     // 6. Complete
     kernel
-        .complete_operation("TASK-full", Some("REQ-full-1"), "reasonix.review_diff")
+        .complete_operation("TASK-full", Some("REQ-full-1"), "coagent.review_diff")
         .expect("complete operation");
     kernel.complete_task("TASK-full").expect("complete task");
 
@@ -291,7 +291,7 @@ fn replay_reconstructs_full_multi_step_task_execution() {
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-A".into(),
         request_id: Some("REQ-A".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/step1.diff".into()],
@@ -300,14 +300,14 @@ fn replay_reconstructs_full_multi_step_task_execution() {
         },
     });
     kernel
-        .complete_operation("TASK-A", Some("REQ-A"), "reasonix.review_diff")
+        .complete_operation("TASK-A", Some("REQ-A"), "coagent.review_diff")
         .unwrap();
 
     // Step 2: Denied by network
     let denied = kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-B".into(),
         request_id: Some("REQ-B".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/step2.diff".into()],
@@ -321,7 +321,7 @@ fn replay_reconstructs_full_multi_step_task_execution() {
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-C".into(),
         request_id: Some("REQ-C".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/step3.diff".into()],
@@ -330,7 +330,7 @@ fn replay_reconstructs_full_multi_step_task_execution() {
         },
     });
     kernel
-        .complete_operation("TASK-C", Some("REQ-C"), "reasonix.review_diff")
+        .complete_operation("TASK-C", Some("REQ-C"), "coagent.review_diff")
         .unwrap();
 
     // Replay aggregate
@@ -360,7 +360,7 @@ fn idempotency_prevents_replaying_same_event_twice() {
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-idem".into(),
         request_id: Some("REQ-idem-1".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/test.diff".into()],
@@ -378,7 +378,7 @@ fn idempotency_prevents_replaying_same_event_twice() {
     assert!(!check_idempotency(&store, "TASK-idem", "lifecycle_closed").unwrap());
 
     kernel
-        .complete_operation("TASK-idem", Some("REQ-idem-1"), "reasonix.review_diff")
+        .complete_operation("TASK-idem", Some("REQ-idem-1"), "coagent.review_diff")
         .unwrap();
 
     let store = RuntimeStore::initialize(&repo).expect("reopen");
@@ -422,7 +422,7 @@ fn sandbox_env_filtering_combined_with_artifact_path_authorization() {
     let allowed = kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-sandbox".into(),
         request_id: Some("REQ-sb-1".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/test.diff".into()],
@@ -436,7 +436,7 @@ fn sandbox_env_filtering_combined_with_artifact_path_authorization() {
     let denied = kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-sandbox".into(),
         request_id: Some("REQ-sb-2".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/test.diff".into()],
@@ -647,7 +647,7 @@ fn multiple_tasks_maintain_independent_state_and_events() {
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-A".into(),
         request_id: Some("REQ-A".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/a.diff".into()],
@@ -656,7 +656,7 @@ fn multiple_tasks_maintain_independent_state_and_events() {
         },
     });
     kernel
-        .complete_operation("TASK-A", Some("REQ-A"), "reasonix.review_diff")
+        .complete_operation("TASK-A", Some("REQ-A"), "coagent.review_diff")
         .unwrap();
     kernel.complete_task("TASK-A").unwrap();
 
@@ -664,7 +664,7 @@ fn multiple_tasks_maintain_independent_state_and_events() {
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-B".into(),
         request_id: Some("REQ-B".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/b.diff".into()],
@@ -673,7 +673,7 @@ fn multiple_tasks_maintain_independent_state_and_events() {
         },
     });
     kernel
-        .complete_operation("TASK-B", Some("REQ-B"), "reasonix.review_diff")
+        .complete_operation("TASK-B", Some("REQ-B"), "coagent.review_diff")
         .unwrap();
     kernel.complete_task("TASK-B").unwrap();
 
@@ -681,7 +681,7 @@ fn multiple_tasks_maintain_independent_state_and_events() {
     let denied = kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-C".into(),
         request_id: Some("REQ-C".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/c.diff".into()],
@@ -758,7 +758,7 @@ fn multi_step_task_allows_multiple_operations_on_same_task_id() {
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-multi-op".into(),
         request_id: Some("REQ-op1".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/test.diff".into()],
@@ -767,14 +767,14 @@ fn multi_step_task_allows_multiple_operations_on_same_task_id() {
         },
     });
     kernel
-        .complete_operation("TASK-multi-op", Some("REQ-op1"), "reasonix.review_diff")
+        .complete_operation("TASK-multi-op", Some("REQ-op1"), "coagent.review_diff")
         .expect("complete op1");
 
     // Operation 2: evaluate + complete (same task)
     kernel.evaluate_operation(RuntimeOperationRequest {
         task_id: "TASK-multi-op".into(),
         request_id: Some("REQ-op2".into()),
-        operation: "reasonix.review_diff".into(),
+        operation: "coagent.review_diff".into(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/test.diff".into()],
@@ -783,7 +783,7 @@ fn multi_step_task_allows_multiple_operations_on_same_task_id() {
         },
     });
     kernel
-        .complete_operation("TASK-multi-op", Some("REQ-op2"), "reasonix.review_diff")
+        .complete_operation("TASK-multi-op", Some("REQ-op2"), "coagent.review_diff")
         .expect("complete op2");
 
     // Task should still be Running (not terminal after individual ops)

@@ -15,7 +15,7 @@ fn review_diff_request() -> RuntimeOperationRequest {
     RuntimeOperationRequest {
         task_id: "TASK-policy".to_string(),
         request_id: Some("REQ-policy".to_string()),
-        operation: "reasonix.review_diff".to_string(),
+        operation: "coagent.review_diff".to_string(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/current.diff".to_string()],
@@ -112,7 +112,7 @@ fn unknown_operation_is_denied() {
 fn review_diff_registry_exposes_tool_contract_metadata() {
     let registry = ToolRegistry::review_diff();
     let tool = registry
-        .get("reasonix.review_diff")
+        .get("coagent.review_diff")
         .expect("review_diff tool is registered");
 
     assert_eq!(tool.operation(), "coagent.review_diff");
@@ -194,7 +194,7 @@ fn m2_minimum_owned_types_are_constructible() {
         network: false,
     };
     let policy_request = PolicyEvaluationRequest {
-        operation: "reasonix.review_diff".to_string(),
+        operation: "coagent.review_diff".to_string(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: resources.clone(),
     };

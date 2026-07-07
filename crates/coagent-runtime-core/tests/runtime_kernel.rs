@@ -33,7 +33,7 @@ fn allowed_request(task_id: &str, request_id: &str) -> RuntimeOperationRequest {
     RuntimeOperationRequest {
         task_id: task_id.to_string(),
         request_id: Some(request_id.to_string()),
-        operation: "reasonix.review_diff".to_string(),
+        operation: "coagent.review_diff".to_string(),
         permission_level: PermissionLevel::L1DiffReview,
         resources: ResourceSet {
             read_paths: vec![".agent/diffs/current.diff".to_string()],
@@ -158,7 +158,7 @@ fn kernel_emits_runtime_events_for_evaluate_and_complete() {
     assert_eq!(decision.decision, RuntimeDecisionValue::Allow);
 
     kernel
-        .complete_operation("TASK-events", Some("REQ-events"), "reasonix.review_diff")
+        .complete_operation("TASK-events", Some("REQ-events"), "coagent.review_diff")
         .expect("complete operation");
 
     let store = RuntimeStore::initialize(repo).expect("reopen store");

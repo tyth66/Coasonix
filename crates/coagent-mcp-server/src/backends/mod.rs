@@ -1,4 +1,4 @@
-pub mod acp_backend;
+﻿pub mod acp_backend;
 pub mod backend_trait;
 pub mod context;
 pub mod mock;
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn backend_can_be_constructed_from_registered_tool_binding() {
         let tool = ToolRegistry::review_diff()
-            .get("reasonix.review_diff")
+            .get("coagent.review_diff")
             .expect("review_diff tool")
             .clone();
 
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn configured_backend_override_takes_precedence_over_tool_binding() {
         let tool = ToolRegistry::review_diff()
-            .get("reasonix.review_diff")
+            .get("coagent.review_diff")
             .expect("review_diff tool")
             .clone();
 

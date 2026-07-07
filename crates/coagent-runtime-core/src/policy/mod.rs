@@ -182,10 +182,10 @@ impl ToolRegistry {
         Self::default()
     }
 
-    /// Create the default registry with `reasonix.review_diff` registered.
+    /// Create the default registry with `coagent.review_diff` as the canonical tool name.
     pub fn review_diff() -> Self {
         Self::new().register(ToolDefinition::new(
-            "reasonix.review_diff",
+            "coagent.review_diff",
             PermissionLevel::L1DiffReview,
             BackendBinding::ReasonixAcp,
             ApprovalPolicy::Never,
@@ -352,7 +352,7 @@ impl PolicyEngine {
     /// Legacy constructor preserved for backward compat.
     pub fn review_diff(artifact_policy: ArtifactPolicy) -> Self {
         Self::new(artifact_policy)
-            .register_operation("reasonix.review_diff", PermissionLevel::L1DiffReview)
+            .register_operation("coagent.review_diff", PermissionLevel::L1DiffReview)
     }
 
     /// Build from a full ToolRegistry snapshot.
