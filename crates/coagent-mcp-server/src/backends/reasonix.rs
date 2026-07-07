@@ -241,22 +241,52 @@ pub enum ReasonixError {
     Timeout(String),
 }
 
+/// Prompt template for Reasonix backend, generated from coagent-v1.schema.json.
+/// This ensures the model output strictly matches the PureReviewResult schema.
+pub const REASONIX_REVIEW_PROMPT_TEMPLATE: &str = r#"
+You are reviewing a code diff.
+
+GOAL: {goal}
+DIFF PATH: {diff_path}
+
+Read the diff file, analyze it, then return your review as a single JSON object.
+Return ONLY the JSON. No markdown, no explanation, no surrounding text.
+
+{
+  "verdict": "PICK_ONE: pass | needs_fix | risky | unknown | not_applicable",
+  "summary": "concise one-sentence summary",
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "PICK_ONE: blocker | major | minor | note",
+      "category": "security | correctness | performance | style | maintainability | testing | documentation | architecture",
+      "file": "relative/path/to/file.ext",
+      "line": 42,
+      "issue": "concise description of the problem",
+      "evidence": "specific code or reasoning",
+      "recommendation": "suggested fix",
+      "confidence": 0.95
+    }
+  ],
+  "tests_to_run": ["cargo test -p ..."],
+  "risks": ["potential risk if merged as-is"],
+  "assumptions": ["assumption made during review"],
+  "confidence": 0.85
+}
+
+RULES:
+1. verdict MUST be one of: pass, needs_fix, risky, unknown, not_applicable
+2. severity MUST be one of: blocker, major, minor, note
+3. Every finding REQUIRES: severity, category, issue, confidence
+4. confidence is 0.0-1.0 (0 = completely uncertain, 1 = completely certain)
+5. If no issues found: "findings": []
+6. Return ONLY the JSON object
+"#;
+
 fn build_review_prompt(goal: &str, diff_path: &str) -> String {
-    format!(
-        "You are reviewing a code diff.\n\n\
-         Review goal: {goal}\n\n\
-         Artifacts:\n\
-         - diff_path: {diff_path}\n\n\
-         Read the diff file, analyze it, then return your review as a single JSON \
-         object with this exact schema. Return ONLY the JSON, no other text:\n\
-         {{\n  \"verdict\": \"pass\" | \"needs_fix\" | \"risky\" | \"unknown\",\n  \
-         \"summary\": \"one-sentence summary\",\n  \
-         \"findings\": [],\n  \
-         \"tests_to_run\": [],\n  \
-         \"risks\": [],\n  \
-         \"assumptions\": [],\n  \
-         \"confidence\": 0.0-1.0\n}}"
-    )
+    REASONIX_REVIEW_PROMPT_TEMPLATE
+        .replace("{goal}", goal)
+        .replace("{diff_path}", diff_path)
 }
 
 fn parse_response_frame(
