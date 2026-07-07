@@ -1,4 +1,4 @@
-// DEPRECATED: This JSON-RPC worker is superseded by coagent-mcp-server,
+﻿// DEPRECATED: This JSON-RPC worker is superseded by coagent-mcp-server,
 // which calls coagent-runtime-core directly (same process, no JSON-RPC).
 // Kept for backward compatibility with the legacy TypeScript adapter.
 
@@ -247,8 +247,12 @@ impl Worker {
 
 fn task_state_value_to_str(value: TaskStateValue) -> &'static str {
     match value {
-        TaskStateValue::Created => "created",
+        TaskStateValue::Queued => "queued",
         TaskStateValue::Running => "running",
+        TaskStateValue::Blocked => "blocked",
+        TaskStateValue::WaitingApproval => "waiting_approval",
+        TaskStateValue::Retrying => "retrying",
+        TaskStateValue::PartiallyCompleted => "partially_completed",
         TaskStateValue::Completed => "completed",
         TaskStateValue::Failed => "failed",
         TaskStateValue::Cancelled => "cancelled",

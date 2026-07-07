@@ -87,9 +87,29 @@ impl CoagentServer {
             })
         };
 
+        if decision.decision == coagent_runtime_core::policy::RuntimeDecisionValue::RequireApproval
+        {
+            // Approval gated: transition to WaitingApproval, return paused status.
+            let _ = self.kernel.lock().await.write_audit(coagent_runtime_core::kernel::AuditEvent {
+                task_id: task_id.clone(),
+                event_type: "approval_required".into(),
+                summary: format!("Approval required for {}", self.review_tool.operation()),
+                payload_json: serde_json::json!({ "task_id": &task_id, "request_id": &request_id, "reasons": decision.reasons }).to_string(),
+            });
+            let wrapper = serde_json::json!({
+                "status": "approval_required",
+                "task_id": &task_id,
+                "request_id": &request_id,
+                "reasons": decision.reasons
+            });
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
+                serde_json::to_string(&wrapper).unwrap_or_default(),
+            )]));
+        }
+
         if decision.decision != coagent_runtime_core::policy::RuntimeDecisionValue::Allow {
             // Policy deny: write audit event without state transition
-            // (Created->Failed is illegal; deny happens pre-execution)
+            // (deny happens pre-execution)
             let _ =
                 self.kernel
                     .lock()
@@ -193,7 +213,16 @@ impl rmcp::handler::server::ServerHandler for CoagentServer {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
-    let backend = Backend::from_config(config.backend, &config.reasonix_model, &config.repo_root);
+    let review_tool = ToolRegistry::review_diff()
+        .get("reasonix.review_diff")
+        .expect("review_diff tool definition")
+        .clone();
+    let backend = Backend::from_configured_tool(
+        config.backend_override,
+        &review_tool,
+        &config.reasonix_model,
+        &config.repo_root,
+    );
 
     let kernel = RuntimeKernel::initialize(RuntimeConfig {
         repo_root: config.repo_root.clone(),
@@ -201,10 +230,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .map_err(|e| format!("failed to initialize runtime kernel: {e}"))?;
     let schema_registry = embedded_schema_registry()
         .map_err(|e| format!("failed to initialize schema registry: {e}"))?;
-    let review_tool = ToolRegistry::review_diff()
-        .get("reasonix.review_diff")
-        .expect("review_diff tool definition")
-        .clone();
 
     let server = CoagentServer {
         kernel: Arc::new(Mutex::new(kernel)),

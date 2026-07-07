@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+﻿use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -365,7 +365,7 @@ impl RuntimeKernel {
     }
 
     fn persist_running_state(&self, task_id: &str, current_state: TaskState) {
-        if current_state.value() == TaskStateValue::Created {
+        if current_state.value() == TaskStateValue::Queued {
             let mut next = current_state;
             if next.transition_to(TaskStateValue::Running).is_ok() {
                 let _ = self.store.upsert_task_state(&next);

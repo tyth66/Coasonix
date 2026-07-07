@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fs,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -7,8 +7,8 @@ use std::{
 use coagent_runtime_core::{
     kernel::{AuditEvent, RuntimeConfig, RuntimeDecisionValue, RuntimeKernel, engine_results},
     policy::{
-        PermissionLevel, ResourceSet, RuntimeOperationRequest, ToolCapabilities, ToolDefinition,
-        ToolRegistry,
+        ApprovalPolicy, BackendBinding, PermissionLevel, ResourceSet, RuntimeOperationRequest,
+        ToolCapabilities, ToolDefinition, ToolRegistry,
     },
     state::{TaskState, TaskStateValue},
     storage::RuntimeStore,
@@ -111,6 +111,8 @@ fn kernel_can_initialize_with_custom_tool_registry() {
     let registry = ToolRegistry::new().register(ToolDefinition::new(
         "agent.docs_read",
         PermissionLevel::L0Readonly,
+        BackendBinding::Mock,
+        ApprovalPolicy::Never,
         "docs_read_input_v1",
         "docs_read_result_v1",
         ToolCapabilities {

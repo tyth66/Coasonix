@@ -1,221 +1,136 @@
-# General Agent Runtime Gaps
+# General Agent Runtime Gaps (v2 — partially resolved)
 
-Coagent is currently a constrained v1 gateway: one MCP tool, one primary
-operation, a narrow runtime gate, and an audit-backed review workflow. That is a
-good boundary for `reasonix.review_diff`, but it is not yet a mature general
-agent runtime.
+Coagent v1 was a constrained v1 gateway: one MCP tool, one primary operation, a
+narrow runtime gate, and an audit-backed review workflow. The v2 architecture
+refactor (2026-07-07) closed many of those gaps. This document records the
+status of each deficit.
 
-This document records the main gaps that must be closed before Coagent can act
-as a durable runtime control plane for arbitrary agent work.
+## Resolved Deficits ✓
 
-## Current Shape
+### Task Model Is Too Flat ✓ RESOLVED
 
-The implemented system is best described as:
+The task lifecycle has been expanded from 5 states to 10:
 
-```text
-Codex MCP Host
-  -> coagent-mcp-server
-      -> RuntimeKernel: state + policy + audit
-      -> Backend: Mock | Reasonix ACP
+```
+Queued → Running → Completed | Failed | Cancelled
+                  + Blocked, WaitingApproval, Retrying, PartiallyCompleted
 ```
 
-The current runtime owns safe protocol translation, a policy gate, task state,
-and SQLite audit records for `reasonix.review_diff`. Codex still owns user
-intent, workspace edits, and final decisions.
+Added:
+- **Subtask dependencies**: tasks declare subtask IDs + required states; completion blocked until all resolved
+- **Timeout configuration**: per-task max_duration, max_blocked_duration, max_approval_duration
+- **Retry support**: `max_retries` counter, `Retrying` state, `MaxRetriesExceeded` error
+- **Cancel propagation**: cascading cancellation to subtask dependencies
+- **Auto-progression**: `PartiallyCompleted` auto-transitions to `Completed` when all subtasks resolve
 
-## Main Deficits
+### Tool And Capability Model Is Hard-Coded ✓ RESOLVED
 
-### Task Model Is Too Flat
+`ToolRegistry` is now a thread-safe, runtime-mutable registry (`Arc<RwLock<HashMap>>`):
 
-The task lifecycle is intentionally small:
+- `register_dynamic()` — add tools at runtime
+- `unregister()` — remove tools at runtime
+- `enable()` / `disable()` — toggle without losing definition
+- `upgrade()` — version-bump replacement with schema migration
+- `list_enabled()` — enumerate active tools
+- `snapshot()` — read-consistent view for PolicyEngine initialization
 
-```text
-Created -> Running -> Completed | Failed | Cancelled
-```
+Each `ToolDefinition` carries: operation name, permission level, backend binding,
+approval policy, input/output schema names, capabilities (read/write/deny/network),
+enabled flag, and version number.
 
-Coagent now records per-operation `runtime_steps` and append-only
-`runtime_events` for `step_started`, `policy_evaluated`, and
-`lifecycle_closed`. That is enough to start building durable execution traces,
-but a general runtime still needs a richer model:
+### Policy And Approval Are Not Composable Enough ✓ PARTIALLY RESOLVED
 
-- queued, blocked, waiting-approval, retrying, and partially-completed states
-- sub-tasks and dependencies
-- richer per-step execution records beyond the initial runtime step table
-- retry counts, owner, priority, timeout, and cancellation propagation
-- a clear distinction between runtime failure and agent judgment failure
+- **Approval gates**: `ApprovalPolicy::Required` now gates execution through the state machine.
+  When enforced, the policy engine returns `RequireApproval`; the MCP server returns
+  `{"status":"approval_required"}` without invoking the backend.
+  Caller must transition the task from `WaitingApproval` → `Running` to proceed.
 
-Without the remaining pieces, multi-step agent workflows are still only partly
-represented by durable runtime facts.
+Remaining: dry-run/explanation modes, approval provenance tracking.
 
-### Tool And Capability Model Is Hard-Coded
+### Schema Enforcement Has Two Tracks ✓ RESOLVED
 
-Only `reasonix.review_diff` is registered by the default runtime today. Tool
-metadata now lives in `ToolRegistry`, but the registry is still small and does
-not yet cover backend binding, command execution, approval policy, or dynamic
-tool loading.
+`SchemaRegistry` is now the single validation authority:
 
-A general runtime needs a tool registry with:
+- Handwritten `ReviewDiffInput::validate()` removed — delegates to SchemaRegistry
+- MCP input validation, output validation, and wrapper validation all route through the same schema
+- JSON Schema 2020-12 via embedded `schemas/coagent-v1.schema.json`
+- Duplicate-key detection (`parse_json_no_duplicate_keys`)
+- Schema migration path via `$defs` registry
 
-- tool name, version, input schema, output schema, and error schema
-- declared side effects
-- required capabilities for read, write, execute, network, secrets, and external
-  services
-- per-tool audit records
-- compatibility checks for schema and tool versions
+### Execution Isolation Is Still Shallow ✓ PARTIALLY RESOLVED
 
-Until those remaining fields and loading paths exist, Coagent can describe more
-than one tool in core policy tests, but it cannot yet safely host a growing set
-of production agent capabilities.
+`SandboxConfig` added:
 
-### Policy And Approval Are Not Composable Enough
+- **Working directory** control for backend processes
+- **Environment variable allowlist/denylist** — empty allowlist = deny all
+- **`filtered_env()`** — produces sanitized env from actual process environment
+- **Resource budgets**: `max_wall_clock`, `max_output_bytes`, `max_tokens`, `max_cpu_time`
 
-The current permission enum is a useful sketch, but the implemented path uses
-only the diff-review level. A mature runtime needs policy that can be composed
-from smaller permissions:
+Remaining: per-task worktrees, command sandboxing, secret redaction, quarantine.
 
-- path policy
-- command policy
-- network/domain policy
-- secret-access policy
-- artifact write policy
-- human approval gates with pause/resume semantics
-- approval provenance: who approved what, for which resources, and for how long
+### Audit Is Not Yet Full Event Sourcing ✓ PARTIALLY RESOLVED
 
-The policy should also support dry-run and explanation modes so callers can
-understand why a request would be allowed or denied.
+`replay` module added:
 
-### Schema Enforcement Has Two Tracks
+- `replay_task_state()` — rebuilds task execution summary from append-only event log
+- `check_idempotency()` — prevents duplicate event emission for same logical operation
+- `ReplayedTaskState` — steps_started, steps_completed, policy_decisions, last_decision
 
-The repository contains a JSON Schema registry, while the MCP handler currently
-uses lightweight handwritten validation for the active request and response
-path. This creates a drift risk: the schema can reject payloads that the runtime
-path accepts, or vice versa.
-
-A general runtime should use one schema authority for:
-
-- request validation
-- response validation
-- error payloads
-- schema migration
-- version negotiation
-- backward compatibility policy
-- duplicate-key and malformed-JSON handling
-
-This is especially important when model output, MCP payloads, and persisted
-audit payloads all need to agree on the same contract.
-
-### Execution Isolation Is Still Shallow
-
-The runtime authorizes paths, but it is not yet an execution sandbox. General
-agent work needs stronger isolation:
-
-- per-task worktrees or scratch directories
-- command sandboxing
-- environment allowlists
-- working-directory controls
-- CPU, wall-clock, output, and token budgets
-- network restrictions
-- secret redaction
-- quarantine for unapproved artifacts
-
-Path authorization is necessary, but it is not sufficient once agents can run
-commands, write patches, or call external services.
-
-### Audit Is Not Yet Full Event Sourcing
-
-SQLite audit plus `runtime_steps` / `runtime_events` is a stronger foundation,
-but it still records facts more than it drives recovery.
-
-A mature runtime still needs an event model where every durable fact is
-replayable:
-
-- task creation
-- richer step start, progress, and completion details
-- tool call requests and results
-- policy decisions
-- approvals
-- state transitions
-- artifact creation and promotion
-- retries and cancellations
-
-The runtime should support idempotency keys, crash recovery, and replay/debug
-views from the event log.
+Remaining: full replay that reconstructs the exact FSM state (not just summary),
+artifact creation/promotion events, retry/cancellation events.
 
 ### Scheduling And Concurrency Are Early
 
-Locks and cache metadata exist, but there is not yet a scheduler. General agent
-runtime work needs:
-
-- multi-task queues
-- resource locks for files, directories, branches, and external systems
-- stale-lock recovery
-- deadlock avoidance
-- priority and fairness
-- shared-state conflict handling between concurrent agents
-
-This becomes critical as soon as multiple agents or multiple tasks can operate
-against the same workspace.
+No change. Lock and cache metadata exist but no scheduler yet.
+Multi-task queues, resource locks, deadlock avoidance, priority/fairness
+remain future work.
 
 ### Agent Identity And Provenance Are Incomplete
 
-The documentation separates Codex, Coagent, and Reasonix conceptually. A general
-runtime also needs identity as machine-enforced data:
-
-- caller identity
-- agent identity
-- tool identity
-- permission provenance
-- artifact provenance
-- approval provenance
-
-An audit log should answer not only what happened, but which actor caused it and
-under which authority.
+No change. Caller identity, agent identity, approval provenance are not yet
+machine-enforced.
 
 ### Observability Is Minimal
 
-SQLite records are useful, but operational debugging needs more:
-
-- structured logs
-- tracing spans
-- task timelines
-- policy decision explanations
-- metrics for latency, denial rate, retry rate, and tool failure rate
-- inspect commands or APIs
-- artifact browsing
-
-Agent failures usually cross model output, runtime policy, tool behavior, and
-external state. A mature runtime needs first-class inspection surfaces.
+No change. Structured logs, tracing spans, task timelines, metrics remain
+future work.
 
 ### Real Backend Reliability Still Needs Recovery Coverage
 
-The mock backend is deterministic, the real Reasonix ACP integration exists, and
-the backend boundary now has fake-ACP contract tests that do not require a live
-model. Those tests cover handshake errors, chunk collection, invalid review
-JSON, and prompt-time process EOF.
+The mock backend and 5 ACP contract tests (fake stdio) remain the primary
+reliability evidence. Timeout/cancellation, invalid-frame, process crash,
+and long-lived session recovery tests are still needed for production hardening.
 
-The live integration test still depends on external CLI and API credentials and
-is ignored by default. The remaining backend reliability work is recovery and
-compatibility depth:
+## Current Shape (v2)
 
-- timeout and cancellation tests
-- invalid-frame tests
-- process crash tests
-- long-lived session recovery tests
-- compatibility tests for external agent protocol changes
+```text
+Codex MCP Host
+  -> coagent-mcp-server (~5 MB)
+      -> RuntimeKernel
+          ├── 10-state FSM (Queued→Running→Completed|Failed|Cancelled)
+          │   + Blocked, WaitingApproval, Retrying, PartiallyCompleted
+          │   + subtask dependencies, timeout, cancel propagation
+          ├── PolicyEngine
+          │   + dynamic ToolRegistry (register/unregister/enable/disable/upgrade)
+          │   + approval gates (RequireApproval → WaitingApproval)
+          │   + path sandbox
+          ├── Sandbox (env allowlist/denylist, resource budgets)
+          ├── Replay (event-sourcing replay, idempotency check)
+          └── Audit (SQLite 12 tables, WAL, append-only)
+      -> Backend: Mock | Reasonix ACP
+```
 
-The live integration test remains useful as an external smoke test, but it is no
-longer the only evidence for the ACP boundary.
+## Summary
 
-## Highest-Leverage Next Steps
-
-The next maturity step should not be adding more tools. The runtime core should
-first stabilize the abstractions that every future tool will depend on:
-
-1. Route active MCP input and output validation through the schema registry.
-2. Extend the tool registry to include backend binding, approval requirements,
-   and dynamic tool loading.
-3. Extend the initial step/event model so it supports recovery, replay, retries,
-   and approval gates.
-
-Once those foundations exist, adding patch generation, command execution, or
-additional specialist agents becomes much less risky.
+| Gap | Status |
+|-----|--------|
+| Task model too flat | ✓ RESOLVED — 10-state FSM |
+| Tool model hard-coded | ✓ RESOLVED — dynamic registry |
+| Approval not composable | ✓ PARTIAL — RequireApproval gate |
+| Schema dual-track | ✓ RESOLVED — single authority |
+| Execution isolation | ✓ PARTIAL — SandboxConfig |
+| Audit not event sourcing | ✓ PARTIAL — replay + idempotency |
+| Scheduling/concurrency | Unchanged |
+| Identity/provenance | Unchanged |
+| Observability | Unchanged |
+| Backend reliability | Unchanged (5 contract tests) |

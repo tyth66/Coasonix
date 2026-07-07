@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use coagent_runtime_core::policy::{
-    PermissionLevel, PolicyEngine, PolicyEvaluationRequest, ResourceSet, RoutingMetadata,
-    RuntimeDecision, RuntimeDecisionValue, RuntimeOperationRequest, ToolCapabilities,
-    ToolDefinition, ToolRegistry,
+    ApprovalPolicy, BackendBinding, PermissionLevel, PolicyEngine, PolicyEvaluationRequest,
+    ResourceSet, RoutingMetadata, RuntimeDecision, RuntimeDecisionValue, RuntimeOperationRequest,
+    ToolCapabilities, ToolDefinition, ToolRegistry,
 };
 
 fn review_diff_engine(repo_root: impl Into<PathBuf>) -> PolicyEngine {
@@ -117,6 +117,8 @@ fn review_diff_registry_exposes_tool_contract_metadata() {
 
     assert_eq!(tool.operation(), "reasonix.review_diff");
     assert_eq!(tool.required_permission(), PermissionLevel::L1DiffReview);
+    assert_eq!(tool.backend_binding(), BackendBinding::ReasonixAcp);
+    assert_eq!(tool.approval_policy(), ApprovalPolicy::Never);
     assert_eq!(tool.input_schema(), "review_diff_input_v1");
     assert_eq!(tool.output_schema(), "coagent_review_wrapper_v1");
     assert!(!tool.capabilities().network);
@@ -138,6 +140,8 @@ fn policy_engine_uses_registry_defined_capabilities_per_tool() {
     let registry = ToolRegistry::new().register(ToolDefinition::new(
         "agent.docs_read",
         PermissionLevel::L0Readonly,
+        BackendBinding::Mock,
+        ApprovalPolicy::Never,
         "docs_read_input_v1",
         "docs_read_result_v1",
         ToolCapabilities {

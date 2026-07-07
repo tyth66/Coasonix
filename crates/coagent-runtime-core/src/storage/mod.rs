@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fs,
     path::{Path, PathBuf},
 };
@@ -678,8 +678,12 @@ fn is_append_only_violation(error: &rusqlite::Error) -> bool {
 
 fn task_state_to_str(value: TaskStateValue) -> &'static str {
     match value {
-        TaskStateValue::Created => "created",
+        TaskStateValue::Queued => "queued",
         TaskStateValue::Running => "running",
+        TaskStateValue::Blocked => "blocked",
+        TaskStateValue::WaitingApproval => "waiting_approval",
+        TaskStateValue::Retrying => "retrying",
+        TaskStateValue::PartiallyCompleted => "partially_completed",
         TaskStateValue::Completed => "completed",
         TaskStateValue::Failed => "failed",
         TaskStateValue::Cancelled => "cancelled",
@@ -688,15 +692,18 @@ fn task_state_to_str(value: TaskStateValue) -> &'static str {
 
 fn task_state_from_str(value: &str) -> Result<TaskStateValue, StoreError> {
     match value {
-        "created" => Ok(TaskStateValue::Created),
+        "queued" => Ok(TaskStateValue::Queued),
         "running" => Ok(TaskStateValue::Running),
+        "blocked" => Ok(TaskStateValue::Blocked),
+        "waiting_approval" => Ok(TaskStateValue::WaitingApproval),
+        "retrying" => Ok(TaskStateValue::Retrying),
+        "partially_completed" => Ok(TaskStateValue::PartiallyCompleted),
         "completed" => Ok(TaskStateValue::Completed),
         "failed" => Ok(TaskStateValue::Failed),
         "cancelled" => Ok(TaskStateValue::Cancelled),
         _ => Err(StoreError::InvalidTaskState(value.to_string())),
     }
 }
-
 fn runtime_decision_to_str(value: RuntimeDecisionValue) -> &'static str {
     match value {
         RuntimeDecisionValue::Allow => "allow",

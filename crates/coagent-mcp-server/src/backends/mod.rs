@@ -3,6 +3,8 @@ pub mod reasonix;
 
 use std::path::Path;
 
+use coagent_runtime_core::policy::{BackendBinding, ToolDefinition};
+
 use crate::config::BackendId;
 
 #[derive(Clone)]
@@ -20,5 +22,66 @@ impl Backend {
                 repo_root.to_path_buf(),
             )),
         }
+    }
+
+    pub fn from_tool_binding(
+        tool: &ToolDefinition,
+        reasonix_model: &str,
+        repo_root: &Path,
+    ) -> Self {
+        match tool.backend_binding() {
+            BackendBinding::Mock => Self::Mock,
+            BackendBinding::ReasonixAcp => Self::Reasonix(reasonix::ReasonixRunner::new(
+                reasonix_model,
+                repo_root.to_path_buf(),
+            )),
+        }
+    }
+
+    pub fn from_configured_tool(
+        backend_override: Option<BackendId>,
+        tool: &ToolDefinition,
+        reasonix_model: &str,
+        repo_root: &Path,
+    ) -> Self {
+        match backend_override {
+            Some(backend_id) => Self::from_config(backend_id, reasonix_model, repo_root),
+            None => Self::from_tool_binding(tool, reasonix_model, repo_root),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use coagent_runtime_core::policy::ToolRegistry;
+
+    #[test]
+    fn backend_can_be_constructed_from_registered_tool_binding() {
+        let tool = ToolRegistry::review_diff()
+            .get("reasonix.review_diff")
+            .expect("review_diff tool")
+            .clone();
+
+        let backend = Backend::from_tool_binding(&tool, "fake-model", Path::new("."));
+
+        assert!(matches!(backend, Backend::Reasonix(_)));
+    }
+
+    #[test]
+    fn configured_backend_override_takes_precedence_over_tool_binding() {
+        let tool = ToolRegistry::review_diff()
+            .get("reasonix.review_diff")
+            .expect("review_diff tool")
+            .clone();
+
+        let backend = Backend::from_configured_tool(
+            Some(BackendId::Mock),
+            &tool,
+            "fake-model",
+            Path::new("."),
+        );
+
+        assert!(matches!(backend, Backend::Mock));
     }
 }
