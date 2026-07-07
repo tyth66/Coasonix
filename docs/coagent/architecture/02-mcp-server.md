@@ -57,6 +57,21 @@ enum Backend {
 
 Selected via `COAGENT_BACKEND` env var (default: mock).
 
+## Reasonix ACP Contract Tests
+
+The live Reasonix integration test is ignored by default because it requires the
+Reasonix CLI and external model credentials. The backend boundary is covered by
+local contract tests that create a fake Reasonix executable and exercise the
+same `Command::spawn` + stdin/stdout JSON-RPC path used in production.
+
+Covered protocol cases:
+
+- initialize/session handshake error frames preserve backend error messages
+- `session/update` agent text chunks are collected into a review result
+- invalid model output is rejected as `parse review`
+- prompt-time process EOF is surfaced as a protocol error instead of waiting for
+  the wall-clock timeout
+
 ## Input/Output Schema
 
 `ReviewDiffInput` derives `schemars::JsonSchema` — rmcp auto-generates

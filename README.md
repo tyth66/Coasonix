@@ -51,20 +51,22 @@ Rust MCP server binary:                     implemented (single exe, same-proces
 Runtime state machine:                      implemented (Created->Running->Completed/Failed/Cancelled)
 Policy engine:                              implemented (operation, permission, path, network)
 Artifact policy:                            implemented (allowlist/denylist, glob, traversal, symlink)
-SQLite audit:                               implemented (10 tables, WAL, append-only triggers)
+SQLite audit + runtime events:             implemented (12 tables, WAL, append-only audit/events)
 Pure review result boundary:                implemented (Reasonix returns semantic-only; Coagent wraps)
 Runtime lifecycle closure:                  implemented (same-process complete/fail in Rust)
 Mock Reasonix backend:                      implemented (instant mock review)
 Real Reasonix ACP backend:                  implemented (DeepSeek models over ACP protocol)
+Reasonix ACP contract tests:                implemented (fake stdio ACP backend, no live API key)
 patch / approval / autonomous write path:   out of scope
 ```
 
 ## Verification
 
 ```powershell
-cargo test --workspace    # 81 pass (3 ignored: Reasonix integration tests)
+cargo test --workspace    # 94 pass, 1 ignored (live Reasonix integration)
 cargo build -p coagent-mcp-server
 cargo fmt --all -- --check
+cargo clippy --workspace -- -D warnings
 ```
 
 ## Documentation
@@ -72,5 +74,6 @@ cargo fmt --all -- --check
 - [Collaboration Model](docs/coagent/architecture/00-collaboration-model.md)
 - [Runtime: State, Policy, Audit](docs/coagent/architecture/01-runtime.md)
 - [MCP Server (rmcp)](docs/coagent/architecture/02-mcp-server.md)
+- [General Agent Runtime Gaps](docs/coagent/architecture/03-general-agent-runtime-gaps.md)
 - [Documentation Index](docs/coagent/README.md)
 

@@ -70,6 +70,8 @@ fn migrations_create_tables_in_required_order_before_initialize_succeeds() {
             "runtime_decisions",
             "schema_validation_results",
             "policy_evaluation_results",
+            "runtime_steps",
+            "runtime_events",
             "locks",
             "artifacts",
             "cache_entries",
@@ -315,4 +317,55 @@ fn cache_corruption_denies_reuse_only() {
     store
         .write_audit_event(&audit("TASK-cache", "cache_corruption_detected"))
         .expect("store remains usable after corrupt cache metadata");
+}
+
+#[test]
+fn runtime_steps_and_events_are_persisted_in_task_order() {
+    let repo = temp_repo("events");
+    let store = RuntimeStore::initialize(&repo).expect("initialize store");
+
+    let step = store
+        .start_runtime_step("TASK-events", Some("REQ-events"), "reasonix.review_diff")
+        .expect("start step");
+    assert_eq!(step.task_id, "TASK-events");
+    assert_eq!(step.request_id.as_deref(), Some("REQ-events"));
+    assert_eq!(step.operation, "reasonix.review_diff");
+    assert_eq!(step.state, "running");
+
+    let first = store
+        .write_runtime_event(
+            "TASK-events",
+            Some("REQ-events"),
+            Some(step.id),
+            "step_started",
+            "{}",
+        )
+        .expect("write first event");
+    let second = store
+        .write_runtime_event(
+            "TASK-events",
+            Some("REQ-events"),
+            Some(step.id),
+            "policy_evaluated",
+            r#"{"decision":"allow"}"#,
+        )
+        .expect("write second event");
+
+    assert_eq!(first.task_sequence, 1);
+    assert_eq!(second.task_sequence, 2);
+
+    store
+        .finish_runtime_step(step.id, "completed")
+        .expect("finish step");
+
+    let events = store
+        .runtime_events("TASK-events")
+        .expect("load runtime events");
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].event_type, "step_started");
+    assert_eq!(events[1].event_type, "policy_evaluated");
+    assert_eq!(events[1].payload_json, r#"{"decision":"allow"}"#);
+
+    let step = store.runtime_step(step.id).expect("load step");
+    assert_eq!(step.state, "completed");
 }

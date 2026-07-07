@@ -103,6 +103,23 @@ impl SchemaRegistry {
         })
     }
 
+    pub fn load_from_str(
+        schema_path: impl Into<PathBuf>,
+        schema_text: &str,
+    ) -> Result<Self, SchemaError> {
+        let path = schema_path.into();
+        let root_schema: Value =
+            serde_json::from_str(schema_text).map_err(|source| SchemaError::ParseSchema {
+                path: path.clone(),
+                source,
+            })?;
+
+        Ok(Self {
+            schema_path: path,
+            root_schema,
+        })
+    }
+
     pub fn schema_path(&self) -> &Path {
         &self.schema_path
     }

@@ -18,7 +18,8 @@ Terminal states (Completed, Failed, Cancelled) reject all subsequent
 
 ## Policy Engine
 
-Registered operations: `reasonix.review_diff` → `L1_DIFF_REVIEW`
+Registered tools are described by `ToolRegistry`. The default registry currently
+contains `reasonix.review_diff` → `L1_DIFF_REVIEW`.
 
 Permission levels:
 - L0_READONLY — read-only observation
@@ -26,14 +27,19 @@ Permission levels:
 - L2_PATCH_ONLY — generate patches (not implemented)
 - L3_ISOLATED_WORKTREE — full worktree access (not implemented)
 
-Artifact policy: path allowlist/denylist with glob matching, `..` traversal
-rejection, symlink escape detection, case-insensitive on Windows.
+Tool capabilities define input/output schema names, path allowlists, write
+allowlists, deny patterns, and network permission. `PolicyEngine` builds
+per-tool artifact policies from this registry, including `..` traversal
+rejection, symlink escape detection, and case-insensitive path checks on
+Windows.
 
 ## Audit (SQLite)
 
-10 tables in `.agent/coagent.sqlite`:
+12 tables in `.agent/coagent.sqlite`:
 - `tasks`, `task_state` — task lifecycle
 - `audit_events` — append-only event log (UPDATE/DELETE triggers reject mutations)
+- `runtime_steps` — per-operation/request runtime step records
+- `runtime_events` — append-only step/task event stream
 - `runtime_decisions` — each evaluate_operation result
 - `schema_validation_results` — schema check outcomes
 - `policy_evaluation_results` — policy check outcomes
@@ -51,3 +57,16 @@ kernel.evaluate_operation(request) -> RuntimeDecision { allow | deny | ... }
 kernel.complete_operation(task_id, request_id, operation) -> Completed
 kernel.fail_operation(task_id, request_id, operation, error_code, message) -> Failed
 ```
+
+## Step/Event Model
+
+Each `evaluate_operation` creates a `runtime_steps` row for the operation and
+emits append-only `runtime_events`:
+
+- `step_started`
+- `policy_evaluated`
+- `lifecycle_closed`
+
+Allowed steps remain `running` until `complete_operation` or `fail_operation`
+closes them. Denied policy decisions close their step immediately with the
+runtime decision value.

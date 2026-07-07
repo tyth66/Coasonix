@@ -20,8 +20,8 @@ impl Config {
             Ok("reasonix") | Ok("Reasonix") => BackendId::Reasonix,
             _ => BackendId::Mock,
         };
-        let reasonix_model = std::env::var("COAGENT_REASONIX_MODEL")
-            .unwrap_or_else(|_| "deepseek-v4-flash".into());
+        let reasonix_model =
+            std::env::var("COAGENT_REASONIX_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".into());
 
         Ok(Self {
             repo_root: PathBuf::from(repo_root),

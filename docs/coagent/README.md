@@ -5,6 +5,7 @@
 - [Collaboration Model](architecture/00-collaboration-model.md) — Roles, boundaries, current scope
 - [Runtime](architecture/01-runtime.md) — State machine, policy engine, SQLite audit
 - [MCP Server](architecture/02-mcp-server.md) — rmcp integration, tool definition, backend pluggability
+- [General Agent Runtime Gaps](architecture/03-general-agent-runtime-gaps.md) — Deficits to close before Coagent becomes a mature general agent runtime
 
 ## Development
 
@@ -13,16 +14,12 @@
 ```powershell
 # Rust MCP server (primary)
 cargo build -p coagent-mcp-server
-
-# TypeScript adapter (legacy, deprecated)
-bun run --cwd=packages/reasonix-expert-mcp start:mcp
 ```
 
 ### Test
 
 ```powershell
-cargo test --workspace    # Rust: 81 pass (3 ignored) (runtime-core, runtime-worker, mcp-server)
-bun test                  # TypeScript: 82 pass, 1 skip, 0 fail
+cargo test --workspace    # Rust: 94 pass, 1 ignored live Reasonix integration
 ```
 
 ### Verification
@@ -30,8 +27,8 @@ bun test                  # TypeScript: 82 pass, 1 skip, 0 fail
 ```powershell
 cargo build -p coagent-mcp-server
 cargo test --workspace
-bun test
 cargo fmt --all -- --check
+cargo clippy --workspace -- -D warnings
 ```
 
 ## Project Structure
@@ -41,9 +38,6 @@ crates/
   coagent-runtime-core/     Runtime state + policy + audit (library)
   coagent-runtime-worker/   [DEPRECATED] JSON-RPC stdio worker
   coagent-mcp-server/       Rust MCP server binary (primary)
-
-packages/
-  reasonix-expert-mcp/      [DEPRECATED] TypeScript MCP adapter
 
 schemas/
   coagent-v1.schema.json    review_diff contract fixture

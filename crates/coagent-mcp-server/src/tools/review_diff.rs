@@ -5,7 +5,7 @@ use crate::backends::mock::PureReviewResult;
 
 // ── MCP Input schema ──
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[schemars(rename = "review_diff_input_v1")]
 pub struct ReviewDiffInput {
     pub schema_version: String,
@@ -24,14 +24,14 @@ pub struct ReviewDiffInput {
     pub output_schema: String,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct RepoInfo {
     pub root: String,
     pub base_branch: Option<String>,
     pub working_branch: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Artifacts {
     pub diff_path: String,
     pub context_path: Option<String>,
@@ -39,7 +39,7 @@ pub struct Artifacts {
     pub build_log_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Budget {
     pub max_minutes: Option<i64>,
     pub max_output_chars: Option<i64>,
@@ -302,7 +302,11 @@ mod tests {
                 assumptions: vec![],
                 confidence: 0.5,
             };
-            assert!(review.validate().is_ok(), "verdict '{}' should be valid", verdict);
+            assert!(
+                review.validate().is_ok(),
+                "verdict '{}' should be valid",
+                verdict
+            );
         }
     }
 

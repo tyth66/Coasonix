@@ -331,4 +331,3 @@ fn runtime_internal_error() -> JsonRpcError {
         message: "runtime_internal_error",
     }
 }
-
