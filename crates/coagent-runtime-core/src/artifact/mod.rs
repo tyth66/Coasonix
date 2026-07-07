@@ -157,12 +157,7 @@ fn deepest_existing_path(path: &Path) -> Option<&Path> {
 }
 
 fn normalize_pattern(pattern: &str) -> String {
-    normalize_case_key(
-        &pattern
-            .replace('\\', "/")
-            .trim_start_matches("./")
-            .to_string(),
-    )
+    normalize_case_key(pattern.replace('\\', "/").trim_start_matches("./"))
 }
 
 fn normalize_path_key(path: &Path) -> String {
@@ -200,7 +195,7 @@ fn path_starts_with(path: &Path, base: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn relative_under_repo<'a>(path: &'a Path, base: &Path) -> Result<PathBuf, ArtifactPolicyError> {
+fn relative_under_repo(path: &Path, base: &Path) -> Result<PathBuf, ArtifactPolicyError> {
     let path_components: Vec<_> = path.components().collect();
     let base_components: Vec<_> = base.components().collect();
 

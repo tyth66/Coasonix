@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::{
-    artifact::{ArtifactPolicy, ArtifactPolicyError},
-    policy::{PolicyEngine, RuntimeOperationRequest},
+    artifact::ArtifactPolicyError,
+    policy::{PolicyEngine, RuntimeOperationRequest, ToolRegistry},
     state::{TaskState, TaskStateValue},
     storage::{AuditEventInput, AuditEventRecord, RuntimeDecisionRecord, RuntimeStore, StoreError},
 };
@@ -60,21 +60,16 @@ pub enum RuntimeError {
 
 impl RuntimeKernel {
     pub fn initialize(config: RuntimeConfig) -> Result<Self, RuntimeError> {
+        Self::initialize_with_tool_registry(config, ToolRegistry::review_diff())
+    }
+
+    pub fn initialize_with_tool_registry(
+        config: RuntimeConfig,
+        tool_registry: ToolRegistry,
+    ) -> Result<Self, RuntimeError> {
         let store = RuntimeStore::initialize(&config.repo_root)?;
-        let artifact_policy = ArtifactPolicy::new(&config.repo_root)
-            .map_err(RuntimeError::Artifact)?
-            .allow_read([
-                ".agent/context/**",
-                ".agent/diffs/**",
-                ".agent/logs/**",
-                "docs/**",
-                "crates/**",
-                "packages/**",
-                "schemas/**",
-            ])
-            .allow_write([".agent/results/**", ".agent/logs/**"])
-            .deny([".agent/secrets/**", ".git/**"]);
-        let policy_engine = PolicyEngine::review_diff(artifact_policy);
+        let policy_engine = PolicyEngine::from_tool_registry(&config.repo_root, tool_registry)
+            .map_err(RuntimeError::Artifact)?;
 
         Ok(Self {
             store,
@@ -104,11 +99,34 @@ impl RuntimeKernel {
             audit_event_id: None,
         };
 
+        let step_id = match self.start_runtime_step(&request) {
+            Ok(step_id) => step_id,
+            Err(error) => {
+                decision.decision = RuntimeDecisionValue::FatalError;
+                decision.reasons.push(format!("storage error: {error}"));
+                return decision;
+            }
+        };
+
         match self.persist_runtime_decision(&decision) {
             Ok(audit) => {
                 decision.audit_event_id = Some(audit.id);
+                if let Err(error) = self.write_policy_evaluated_event(&decision, step_id) {
+                    decision.decision = RuntimeDecisionValue::FatalError;
+                    decision.reasons.push(format!("storage error: {error}"));
+                    return decision;
+                }
                 if decision.decision == RuntimeDecisionValue::Allow {
                     self.persist_running_state(&request.task_id, current_state);
+                } else if let Err(error) = self.close_runtime_step(
+                    &request.task_id,
+                    request.request_id.as_deref(),
+                    &request.operation,
+                    runtime_decision_to_str(decision.decision),
+                ) {
+                    decision.decision = RuntimeDecisionValue::FatalError;
+                    decision.reasons.push(format!("storage error: {error}"));
+                    return decision;
                 }
             }
             Err(error) => {
@@ -129,14 +147,36 @@ impl RuntimeKernel {
         })?)
     }
 
-
-    /// Transition task to Completed and write audit.
+    /// Close an operation step as completed. Does NOT transition the task to terminal.
+    /// The task remains in its current state, allowing multiple operations per task.
+    /// Use complete_task() for task-level terminal transitions (P2: two-layer state machine).
     pub fn complete_operation(
         &mut self,
         task_id: &str,
         request_id: Option<&str>,
         operation: &str,
     ) -> Result<TaskStateValue, RuntimeError> {
+        let state = self.load_or_create_task_state(task_id);
+
+        let audit = AuditEventInput {
+            task_id: task_id.to_string(),
+            event_type: "operation_completed".to_string(),
+            summary: format!("Operation {operation} completed for task {task_id}"),
+            payload_json: json!({
+                "task_id": task_id,
+                "request_id": request_id,
+                "operation": operation
+            })
+            .to_string(),
+        };
+        self.store.write_audit_event(&audit)?;
+        self.close_runtime_step(task_id, request_id, operation, "completed")?;
+        Ok(state.value())
+    }
+
+    /// Transition the task itself to Completed (terminal).
+    /// This is separate from complete_operation() to support multi-operation tasks.
+    pub fn complete_task(&mut self, task_id: &str) -> Result<TaskStateValue, RuntimeError> {
         let mut state = self.load_or_create_task_state(task_id);
         state
             .transition_to(TaskStateValue::Completed)
@@ -145,19 +185,16 @@ impl RuntimeKernel {
         let audit = AuditEventInput {
             task_id: task_id.to_string(),
             event_type: "task_completed".to_string(),
-            summary: format!("Task {task_id} completed for {operation}"),
-            payload_json: json!({
-                "task_id": task_id,
-                "request_id": request_id,
-                "operation": operation
-            })
-            .to_string(),
+            summary: format!("Task {task_id} completed"),
+            payload_json: json!({ "task_id": task_id }).to_string(),
         };
-        self.store.transition_state_with_audit(task_id, TaskStateValue::Completed, &audit)?;
+        self.store
+            .transition_state_with_audit(task_id, TaskStateValue::Completed, &audit)?;
         Ok(TaskStateValue::Completed)
     }
 
-    /// Transition task to Failed, write audit with error info.
+    /// Mark an operation step as failed. Does NOT transition the task to terminal.
+    /// The task remains in its current state, allowing retry or other operations.
     pub fn fail_operation(
         &mut self,
         task_id: &str,
@@ -166,15 +203,12 @@ impl RuntimeKernel {
         error_code: &str,
         error_message: &str,
     ) -> Result<TaskStateValue, RuntimeError> {
-        let mut state = self.load_or_create_task_state(task_id);
-        state
-            .transition_to(TaskStateValue::Failed)
-            .map_err(|e| RuntimeError::Store(StoreError::InvalidTaskState(format!("{e:?}"))))?;
+        let state = self.load_or_create_task_state(task_id);
 
         let audit = AuditEventInput {
             task_id: task_id.to_string(),
-            event_type: "task_failed".to_string(),
-            summary: format!("Task {task_id} failed ({error_code}): {error_message}"),
+            event_type: "operation_failed".to_string(),
+            summary: format!("Operation {operation} failed ({error_code}): {error_message}"),
             payload_json: json!({
                 "task_id": task_id,
                 "request_id": request_id,
@@ -184,8 +218,9 @@ impl RuntimeKernel {
             })
             .to_string(),
         };
-        self.store.transition_state_with_audit(task_id, TaskStateValue::Failed, &audit)?;
-        Ok(TaskStateValue::Failed)
+        self.store.write_audit_event(&audit)?;
+        self.close_runtime_step(task_id, request_id, operation, "failed")?;
+        Ok(state.value())
     }
 
     fn load_or_create_task_state(&self, task_id: &str) -> TaskState {
@@ -214,21 +249,14 @@ impl RuntimeKernel {
 
     fn evaluate_state(&self, task_id: &str) -> (RuntimeDecisionValue, Vec<String>, TaskState) {
         match self.store.load_task_state(task_id) {
-            Ok(state)
-                if matches!(
-                    state.value(),
-                    TaskStateValue::Completed | TaskStateValue::Failed | TaskStateValue::Cancelled
-                ) =>
-            {
-                (
-                    RuntimeDecisionValue::Deny,
-                    vec![format!(
-                        "task {task_id} is in terminal state {:?}",
-                        state.value()
-                    )],
-                    state,
-                )
-            }
+            // Only Cancelled is truly terminal for tasks.
+            // Completed/Failed tasks can still accept new operations
+            // in the multi-step task pattern (P2: two-layer state machine).
+            Ok(state) if matches!(state.value(), TaskStateValue::Cancelled) => (
+                RuntimeDecisionValue::Deny,
+                vec![format!("task {task_id} is cancelled")],
+                state,
+            ),
             Ok(state) => (RuntimeDecisionValue::Allow, Vec::new(), state),
             Err(StoreError::TaskStateNotFound(_)) => (
                 RuntimeDecisionValue::Allow,
@@ -268,8 +296,83 @@ impl RuntimeKernel {
             .commit_runtime_decision_with_audit(&record, &audit)
     }
 
+    fn start_runtime_step(&self, request: &RuntimeOperationRequest) -> Result<i64, StoreError> {
+        let step = self.store.start_runtime_step(
+            &request.task_id,
+            request.request_id.as_deref(),
+            &request.operation,
+        )?;
+        self.store.write_runtime_event(
+            &request.task_id,
+            request.request_id.as_deref(),
+            Some(step.id),
+            "step_started",
+            &json!({
+                "task_id": request.task_id,
+                "request_id": request.request_id,
+                "operation": request.operation
+            })
+            .to_string(),
+        )?;
+        Ok(step.id)
+    }
+
+    fn write_policy_evaluated_event(
+        &self,
+        decision: &RuntimeDecision,
+        step_id: i64,
+    ) -> Result<(), StoreError> {
+        self.store.write_runtime_event(
+            &decision.task_id,
+            decision.request_id.as_deref(),
+            Some(step_id),
+            "policy_evaluated",
+            &json!({
+                "task_id": decision.task_id,
+                "request_id": decision.request_id,
+                "operation": decision.operation,
+                "decision": runtime_decision_to_str(decision.decision),
+                "state_decision": runtime_decision_to_str(decision.engine_results.state),
+                "policy_decision": runtime_decision_to_str(decision.engine_results.policy),
+                "reasons": decision.reasons
+            })
+            .to_string(),
+        )?;
+        Ok(())
+    }
+
+    fn close_runtime_step(
+        &self,
+        task_id: &str,
+        request_id: Option<&str>,
+        operation: &str,
+        state: &str,
+    ) -> Result<(), StoreError> {
+        let Some(step) = self
+            .store
+            .runtime_step_for_request(task_id, request_id, operation)?
+        else {
+            return Ok(());
+        };
+        self.store.finish_runtime_step(step.id, state)?;
+        self.store.write_runtime_event(
+            task_id,
+            request_id,
+            Some(step.id),
+            "lifecycle_closed",
+            &json!({
+                "task_id": task_id,
+                "request_id": request_id,
+                "operation": operation,
+                "state": state
+            })
+            .to_string(),
+        )?;
+        Ok(())
+    }
+
     fn persist_running_state(&self, task_id: &str, current_state: TaskState) {
-        if current_state.value() == TaskStateValue::Created {
+        if current_state.value() == TaskStateValue::Queued {
             let mut next = current_state;
             if next.transition_to(TaskStateValue::Running).is_ok() {
                 let _ = self.store.upsert_task_state(&next);
@@ -320,4 +423,3 @@ fn runtime_decision_to_str(value: RuntimeDecisionValue) -> &'static str {
         RuntimeDecisionValue::FatalError => "fatal_error",
     }
 }
-

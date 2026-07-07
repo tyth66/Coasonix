@@ -1,27 +1,14 @@
 use std::path::PathBuf;
 
-use coagent_runtime_core::{
-    artifact::ArtifactPolicy,
-    policy::{
-        PermissionLevel, PolicyEngine, PolicyEvaluationRequest, ResourceSet, RoutingMetadata,
-        RuntimeDecision, RuntimeDecisionValue, RuntimeOperationRequest,
-    },
+use coagent_runtime_core::policy::{
+    ApprovalPolicy, BackendBinding, PermissionLevel, PolicyEngine, PolicyEvaluationRequest,
+    ResourceSet, RoutingMetadata, RuntimeDecision, RuntimeDecisionValue, RuntimeOperationRequest,
+    ToolCapabilities, ToolDefinition, ToolRegistry,
 };
 
 fn review_diff_engine(repo_root: impl Into<PathBuf>) -> PolicyEngine {
-    let artifact_policy = ArtifactPolicy::new(repo_root.into())
-        .expect("artifact policy")
-        .allow_read([
-            ".agent/context/**",
-            ".agent/diffs/**",
-            ".agent/logs/**",
-            "docs/**",
-            "crates/**",
-            "packages/**",
-        ])
-        .allow_write([".agent/results/**", ".agent/logs/**"])
-        .deny([".agent/secrets/**", ".git/**"]);
-    PolicyEngine::review_diff(artifact_policy)
+    PolicyEngine::from_tool_registry(repo_root.into(), ToolRegistry::review_diff())
+        .expect("policy engine")
 }
 
 fn review_diff_request() -> RuntimeOperationRequest {
@@ -118,6 +105,84 @@ fn unknown_operation_is_denied() {
             .reasons
             .iter()
             .any(|reason| reason.contains("unknown operation"))
+    );
+}
+
+#[test]
+fn review_diff_registry_exposes_tool_contract_metadata() {
+    let registry = ToolRegistry::review_diff();
+    let tool = registry
+        .get("reasonix.review_diff")
+        .expect("review_diff tool is registered");
+
+    assert_eq!(tool.operation(), "reasonix.review_diff");
+    assert_eq!(tool.required_permission(), PermissionLevel::L1DiffReview);
+    assert_eq!(tool.backend_binding(), BackendBinding::ReasonixAcp);
+    assert_eq!(tool.approval_policy(), ApprovalPolicy::Never);
+    assert_eq!(tool.input_schema(), "review_diff_input_v1");
+    assert_eq!(tool.output_schema(), "coagent_review_wrapper_v1");
+    assert!(!tool.capabilities().network);
+    assert!(
+        tool.capabilities()
+            .read_allow
+            .contains(&"docs/**".to_string())
+    );
+    assert!(
+        tool.capabilities()
+            .write_allow
+            .contains(&".agent/results/**".to_string())
+    );
+}
+
+#[test]
+fn policy_engine_uses_registry_defined_capabilities_per_tool() {
+    let repo = std::env::current_dir().expect("cwd");
+    let registry = ToolRegistry::new().register(ToolDefinition::new(
+        "agent.docs_read",
+        PermissionLevel::L0Readonly,
+        BackendBinding::Mock,
+        ApprovalPolicy::Never,
+        "docs_read_input_v1",
+        "docs_read_result_v1",
+        ToolCapabilities {
+            read_allow: vec!["docs/**".to_string()],
+            write_allow: vec![],
+            deny: vec![".git/**".to_string()],
+            network: false,
+        },
+    ));
+    let engine = PolicyEngine::from_tool_registry(repo, registry).expect("policy engine");
+
+    let allowed = engine.evaluate(&RuntimeOperationRequest {
+        task_id: "TASK-docs".to_string(),
+        request_id: Some("REQ-docs".to_string()),
+        operation: "agent.docs_read".to_string(),
+        permission_level: PermissionLevel::L0Readonly,
+        resources: ResourceSet {
+            read_paths: vec!["docs/coagent/README.md".to_string()],
+            write_paths: vec![],
+            network: false,
+        },
+    });
+    assert_eq!(allowed.decision, RuntimeDecisionValue::Allow);
+
+    let denied = engine.evaluate(&RuntimeOperationRequest {
+        task_id: "TASK-docs".to_string(),
+        request_id: Some("REQ-docs-denied".to_string()),
+        operation: "agent.docs_read".to_string(),
+        permission_level: PermissionLevel::L0Readonly,
+        resources: ResourceSet {
+            read_paths: vec!["crates/coagent-runtime-core/src/lib.rs".to_string()],
+            write_paths: vec![],
+            network: false,
+        },
+    });
+    assert_eq!(denied.decision, RuntimeDecisionValue::Deny);
+    assert!(
+        denied
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("read path"))
     );
 }
 

@@ -32,7 +32,7 @@ Codex MCP Host
 - MCP tool surface: `reasonix.review_diff`
 - Runtime gate: state machine (Created→Running→Completed/Failed/Cancelled)
 - Policy engine: operation, permission level, path allowlist/denylist, network
-- SQLite append-only audit (10 tables, WAL, foreign keys)
+- SQLite append-only audit and runtime events (12 tables, WAL, foreign keys)
 - Context projection (future), result validation, error taxonomy
 
 ### Reasonix

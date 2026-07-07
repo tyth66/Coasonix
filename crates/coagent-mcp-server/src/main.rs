@@ -1,31 +1,32 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use coagent_runtime_core::{
     kernel::{RuntimeConfig, RuntimeKernel},
-    policy::{PermissionLevel, ResourceSet, RuntimeOperationRequest},
+    policy::ToolRegistry,
+    schema::{SchemaError, SchemaRegistry},
 };
 use rmcp::{
-    ErrorData,
+    ErrorData, ServiceExt,
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ServerCapabilities, ServerInfo},
     tool, tool_router,
-    ServiceExt,
     transport::stdio,
 };
 use tokio::sync::Mutex;
 
 mod backends;
 mod config;
+mod pipeline;
 mod tools;
 
-use backends::{Backend, mock::PureReviewResult};
+use backends::{Backend, context::ContextProjection, mock::PureReviewResult};
 use config::Config;
+use pipeline::{ArtifactPaths, ExecutorContext, RuntimeToolExecutor, ValidationError};
 use tools::review_diff::{CoagentReviewWrapper, ReviewDiffInput, ReviewMetadata};
 
 #[derive(Clone)]
 struct CoagentServer {
-    kernel: Arc<Mutex<RuntimeKernel>>,
-    backend: Backend,
+    executor: RuntimeToolExecutor,
 }
 
 #[tool_router]
@@ -38,145 +39,116 @@ impl CoagentServer {
         &self,
         Parameters(input): Parameters<ReviewDiffInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        // 1. Validate input
-        if let Err(e) = input.validate() {
-            return Err(ErrorData::invalid_params(e.message, None));
-        }
+        // Build artifact paths: collect all optional context files
+        let artifact_paths = ArtifactPaths::collect_read(
+            &input.artifacts.diff_path,
+            &[
+                input.artifacts.context_path.as_deref(),
+                input.artifacts.test_log_path.as_deref(),
+                input.artifacts.build_log_path.as_deref(),
+            ],
+        )
+        .with_write(vec![format!(
+            ".agent/results/{}.json",
+            input.request_id.as_deref().unwrap_or("auto")
+        )]);
 
-        let task_id = input.task_id.clone().unwrap_or_else(|| format!("TASK-{}", uuid::Uuid::new_v4()));
-        let request_id = input.request_id.clone().unwrap_or_else(|| format!("REQ-{}", uuid::Uuid::new_v4()));
+        let goal = input.goal.clone();
+        let diff_path = input.artifacts.diff_path.clone();
 
-        // 2. Runtime gate (same-process call, no JSON-RPC)
-        let read_paths: Vec<String> = [
-            input.artifacts.context_path.as_deref(),
-            Some(&input.artifacts.diff_path),
-            input.artifacts.test_log_path.as_deref(),
-            input.artifacts.build_log_path.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .map(String::from)
-        .collect();
+        // Build context projection from all input fields
+        let context = ContextProjection::from_input(
+            goal.clone(),
+            diff_path.clone(),
+            input.artifacts.context_path.clone(),
+            input.artifacts.test_log_path.clone(),
+            input.artifacts.build_log_path.clone(),
+            input.focus.clone(),
+            input.constraints.clone(),
+            input.repo.base_branch.clone(),
+            input.repo.working_branch.clone(),
+        );
 
-        let decision = {
-            let mut kernel = self.kernel.lock().await;
-            kernel.evaluate_operation(RuntimeOperationRequest {
-                task_id: task_id.clone(),
-                request_id: Some(request_id.clone()),
-                operation: "reasonix.review_diff".into(),
-                permission_level: PermissionLevel::L1DiffReview,
-                resources: ResourceSet {
-                    read_paths,
-                    write_paths: vec![format!(".agent/results/{}.json", request_id)],
-                    network: false,
+        // Delegate to the unified executor pipeline
+        self.executor
+            .execute(
+                input.task_id.clone(),
+                input.request_id.clone(),
+                &input,
+                artifact_paths,
+                // Backend call closure
+                |backend| {
+                    let ctx = context.clone();
+                    async move {
+                        match backend {
+                            Backend::Mock => Ok(PureReviewResult::mock_pass()),
+                            Backend::Reasonix(runner) => runner
+                                .run(&ctx.goal, &ctx.diff_path, &ctx)
+                                .await
+                                .map_err(|e| e.to_string()),
+                        }
+                    }
                 },
-            })
-        };
-
-        if decision.decision != coagent_runtime_core::policy::RuntimeDecisionValue::Allow {
-            // Policy deny: write audit event without state transition
-            // (Created->Failed is illegal; deny happens pre-execution)
-            let _ = self.kernel.lock().await.write_audit(
-                coagent_runtime_core::kernel::AuditEvent {
-                    task_id: task_id.clone(),
-                    event_type: "runtime_policy_denied".into(),
-                    summary: format!("Policy denied: {:?}", decision.reasons),
-                    payload_json: serde_json::to_string(&decision.reasons).unwrap_or_default(),
+                // Output validation closure
+                |review: &PureReviewResult| {
+                    review
+                        .validate()
+                        .map_err(|e| ValidationError::new(e.path, e.message))
                 },
-            );
-            let err_text = format!("runtime_policy_denied: {:?}", decision.reasons);
-            return Ok(CallToolResult::error(vec![ContentBlock::text(err_text)]));
-        }
-
-        // 3. Invoke backend
-        let review_result: Result<PureReviewResult, String> = match &self.backend {
-            Backend::Mock => Ok(PureReviewResult::mock_pass()),
-            Backend::Reasonix(runner) => runner
-                .run(&input.goal, &input.artifacts.diff_path)
-                .await
-                .map_err(|e| e.to_string()),
-        };
-
-        match review_result {
-            Ok(review) => {
-                // 4. Validate output
-                if let Err(e) = review.validate() {
-                    let _ = self.kernel.lock().await.fail_operation(
-                        &task_id,
-                        Some(&request_id),
-                        "reasonix.review_diff",
-                        "worker_schema_invalid",
-                        &e.message,
-                    );
-                    let err_text = format!("worker_schema_invalid: {}", e.message);
-                    return Ok(CallToolResult::error(vec![ContentBlock::text(err_text)]));
-                }
-
-                // 5. Complete task lifecycle
-                let _ = self.kernel.lock().await.complete_operation(
-                    &task_id,
-                    Some(&request_id),
-                    "reasonix.review_diff",
-                );
-
-                // 6. Wrap pure review result with Coagent metadata
-                let wrapper = CoagentReviewWrapper {
+                // Wrapper construction closure
+                |review: PureReviewResult| CoagentReviewWrapper {
+                    review,
                     metadata: ReviewMetadata {
                         schema_version: "review_result_v1".into(),
-                        task_id,
-                        request_id,
+                        task_id: String::new(), // filled by executor from IDs
+                        request_id: String::new(), // filled by executor from IDs
                         status: "ok".into(),
                         operation: "reasonix.review_diff".into(),
                         runtime_decision: "allow".into(),
                     },
-                    review,
-                };
-
-                let text = serde_json::to_string(&wrapper)
-                    .unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.into());
-
-                Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
-            }
-            Err(error) => {
-                let _ = self.kernel.lock().await.fail_operation(
-                    &task_id,
-                    Some(&request_id),
-                    "reasonix.review_diff",
-                    "worker_unavailable",
-                    &error,
-                );
-                Ok(CallToolResult::error(vec![ContentBlock::text(error)]))
-            }
-        }
+                },
+            )
+            .await
     }
 }
 
-// ServerHandler: provide server metadata
 #[rmcp_macros::tool_handler]
 impl rmcp::handler::server::ServerHandler for CoagentServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(
-            ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
-        )
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
-    let backend = Backend::from_config(config.backend, &config.reasonix_model, &config.repo_root);
+    let review_tool = ToolRegistry::review_diff()
+        .get("reasonix.review_diff")
+        .expect("review_diff tool definition")
+        .clone();
+    let backend = Backend::from_configured_tool(
+        config.backend_override,
+        &review_tool,
+        &config.reasonix_model,
+        &config.repo_root,
+    );
 
     let kernel = RuntimeKernel::initialize(RuntimeConfig {
         repo_root: config.repo_root.clone(),
     })
     .map_err(|e| format!("failed to initialize runtime kernel: {e}"))?;
+    let schema_registry = embedded_schema_registry()
+        .map_err(|e| format!("failed to initialize schema registry: {e}"))?;
 
-    let server = CoagentServer {
+    let executor = RuntimeToolExecutor::new(ExecutorContext {
+        require_external_ids: config.require_external_ids,
         kernel: Arc::new(Mutex::new(kernel)),
         backend,
-    };
+        schema_registry: Arc::new(schema_registry),
+        tool: review_tool,
+    });
+
+    let server = CoagentServer { executor };
 
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
@@ -184,9 +156,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn embedded_schema_registry() -> Result<SchemaRegistry, SchemaError> {
+    SchemaRegistry::load_from_str(
+        "coagent-v1.schema.json",
+        include_str!("../../../schemas/coagent-v1.schema.json"),
+    )
+}
 
+#[cfg(test)]
+mod tests {
+    use crate::backends::mock::{Finding, PureReviewResult, Severity};
 
+    #[test]
+    fn review_finding_validation_rejects_empty_issue() {
+        let review = PureReviewResult {
+            verdict: "needs_fix".into(),
+            summary: "Finding has empty issue.".into(),
+            findings: vec![Finding {
+                id: None,
+                severity: Severity::Major,
+                category: "correctness".into(),
+                file: None,
+                line: None,
+                issue: "".into(),
+                evidence: None,
+                recommendation: None,
+                confidence: 0.5,
+            }],
+            tests_to_run: vec![],
+            risks: vec![],
+            assumptions: vec![],
+            confidence: 0.8,
+        };
+        let err = review
+            .validate()
+            .expect_err("empty issue should be rejected");
+        assert!(err.path.contains("issue"));
+    }
 
-
-
-
+    #[test]
+    fn review_finding_validation_rejects_invalid_confidence() {
+        let review = PureReviewResult {
+            verdict: "needs_fix".into(),
+            summary: "Finding has out-of-range confidence.".into(),
+            findings: vec![Finding {
+                id: None,
+                severity: Severity::Minor,
+                category: "style".into(),
+                file: None,
+                line: None,
+                issue: "Some issue".into(),
+                evidence: None,
+                recommendation: None,
+                confidence: 2.5,
+            }],
+            tests_to_run: vec![],
+            risks: vec![],
+            assumptions: vec![],
+            confidence: 0.8,
+        };
+        let err = review
+            .validate()
+            .expect_err("out-of-range confidence should be rejected");
+        assert!(err.path.contains("confidence"));
+    }
+}

@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fs,
     path::{Path, PathBuf},
 };
@@ -48,6 +48,26 @@ pub struct SchemaValidationRecord {
     pub expected_schema: String,
     pub valid: bool,
     pub errors_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeStepRecord {
+    pub id: i64,
+    pub task_id: String,
+    pub request_id: Option<String>,
+    pub operation: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeEventRecord {
+    pub id: i64,
+    pub task_id: String,
+    pub request_id: Option<String>,
+    pub step_id: Option<i64>,
+    pub task_sequence: i64,
+    pub event_type: String,
+    pub payload_json: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -372,6 +392,109 @@ impl RuntimeStore {
         Ok(())
     }
 
+    pub fn start_runtime_step(
+        &self,
+        task_id: &str,
+        request_id: Option<&str>,
+        operation: &str,
+    ) -> Result<RuntimeStepRecord, StoreError> {
+        self.connection.execute(
+            "INSERT INTO tasks (task_id) VALUES (?1)
+             ON CONFLICT(task_id) DO NOTHING",
+            params![task_id],
+        )?;
+        self.connection.execute(
+            "INSERT INTO runtime_steps (task_id, request_id, operation, state)
+             VALUES (?1, ?2, ?3, 'running')",
+            params![task_id, request_id, operation],
+        )?;
+        let id = self.connection.last_insert_rowid();
+        self.runtime_step(id)
+    }
+
+    pub fn finish_runtime_step(&self, step_id: i64, state: &str) -> Result<(), StoreError> {
+        self.connection.execute(
+            "UPDATE runtime_steps SET state = ?1 WHERE id = ?2",
+            params![state, step_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn runtime_step(&self, step_id: i64) -> Result<RuntimeStepRecord, StoreError> {
+        Ok(self.connection.query_row(
+            "SELECT id, task_id, request_id, operation, state FROM runtime_steps WHERE id = ?1",
+            params![step_id],
+            runtime_step_from_row,
+        )?)
+    }
+
+    pub fn runtime_step_for_request(
+        &self,
+        task_id: &str,
+        request_id: Option<&str>,
+        operation: &str,
+    ) -> Result<Option<RuntimeStepRecord>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT id, task_id, request_id, operation, state
+                 FROM runtime_steps
+                 WHERE task_id = ?1
+                   AND ((request_id IS NULL AND ?2 IS NULL) OR request_id = ?2)
+                   AND operation = ?3
+                 ORDER BY id DESC
+                 LIMIT 1",
+                params![task_id, request_id, operation],
+                runtime_step_from_row,
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
+    pub fn write_runtime_event(
+        &self,
+        task_id: &str,
+        request_id: Option<&str>,
+        step_id: Option<i64>,
+        event_type: &str,
+        payload_json: &str,
+    ) -> Result<RuntimeEventRecord, StoreError> {
+        let next_sequence = self.next_runtime_event_sequence(task_id)?;
+        self.connection.execute(
+            "INSERT INTO runtime_events
+             (task_id, request_id, step_id, task_sequence, event_type, payload_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                task_id,
+                request_id,
+                step_id,
+                next_sequence,
+                event_type,
+                payload_json
+            ],
+        )?;
+        Ok(RuntimeEventRecord {
+            id: self.connection.last_insert_rowid(),
+            task_id: task_id.to_string(),
+            request_id: request_id.map(str::to_string),
+            step_id,
+            task_sequence: next_sequence,
+            event_type: event_type.to_string(),
+            payload_json: payload_json.to_string(),
+        })
+    }
+
+    pub fn runtime_events(&self, task_id: &str) -> Result<Vec<RuntimeEventRecord>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, task_id, request_id, step_id, task_sequence, event_type, payload_json
+             FROM runtime_events
+             WHERE task_id = ?1
+             ORDER BY task_sequence",
+        )?;
+        let rows = statement.query_map(params![task_id], runtime_event_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StoreError::from)
+    }
+
     pub fn insert_lock(
         &self,
         lock_id: &str,
@@ -446,6 +569,15 @@ impl RuntimeStore {
     fn next_task_sequence(&self, task_id: &str) -> Result<i64, StoreError> {
         next_task_sequence(&self.connection, task_id)
     }
+
+    fn next_runtime_event_sequence(&self, task_id: &str) -> Result<i64, StoreError> {
+        let current: i64 = self.connection.query_row(
+            "SELECT COALESCE(MAX(task_sequence), 0) FROM runtime_events WHERE task_id = ?1",
+            params![task_id],
+            |row| row.get(0),
+        )?;
+        Ok(current + 1)
+    }
 }
 
 fn apply_pragmas(connection: &Connection) -> Result<(), StoreError> {
@@ -514,6 +646,28 @@ fn insert_runtime_decision(
     Ok(())
 }
 
+fn runtime_step_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RuntimeStepRecord> {
+    Ok(RuntimeStepRecord {
+        id: row.get(0)?,
+        task_id: row.get(1)?,
+        request_id: row.get(2)?,
+        operation: row.get(3)?,
+        state: row.get(4)?,
+    })
+}
+
+fn runtime_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RuntimeEventRecord> {
+    Ok(RuntimeEventRecord {
+        id: row.get(0)?,
+        task_id: row.get(1)?,
+        request_id: row.get(2)?,
+        step_id: row.get(3)?,
+        task_sequence: row.get(4)?,
+        event_type: row.get(5)?,
+        payload_json: row.get(6)?,
+    })
+}
+
 fn is_append_only_violation(error: &rusqlite::Error) -> bool {
     matches!(
         error,
@@ -524,25 +678,32 @@ fn is_append_only_violation(error: &rusqlite::Error) -> bool {
 
 fn task_state_to_str(value: TaskStateValue) -> &'static str {
     match value {
-        TaskStateValue::Created => "created",
+        TaskStateValue::Queued => "queued",
         TaskStateValue::Running => "running",
+        TaskStateValue::Blocked => "blocked",
+        TaskStateValue::WaitingApproval => "waiting_approval",
+        TaskStateValue::Retrying => "retrying",
+        TaskStateValue::PartiallyCompleted => "partially_completed",
         TaskStateValue::Completed => "completed",
         TaskStateValue::Failed => "failed",
-            TaskStateValue::Cancelled => "cancelled",
+        TaskStateValue::Cancelled => "cancelled",
     }
 }
 
 fn task_state_from_str(value: &str) -> Result<TaskStateValue, StoreError> {
     match value {
-        "created" => Ok(TaskStateValue::Created),
+        "queued" => Ok(TaskStateValue::Queued),
         "running" => Ok(TaskStateValue::Running),
+        "blocked" => Ok(TaskStateValue::Blocked),
+        "waiting_approval" => Ok(TaskStateValue::WaitingApproval),
+        "retrying" => Ok(TaskStateValue::Retrying),
+        "partially_completed" => Ok(TaskStateValue::PartiallyCompleted),
         "completed" => Ok(TaskStateValue::Completed),
         "failed" => Ok(TaskStateValue::Failed),
         "cancelled" => Ok(TaskStateValue::Cancelled),
         _ => Err(StoreError::InvalidTaskState(value.to_string())),
     }
 }
-
 fn runtime_decision_to_str(value: RuntimeDecisionValue) -> &'static str {
     match value {
         RuntimeDecisionValue::Allow => "allow",
@@ -635,6 +796,41 @@ const MIGRATIONS: &[(&str, &str)] = &[
         );",
     ),
     (
+        "runtime_steps",
+        "CREATE TABLE IF NOT EXISTS runtime_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE RESTRICT,
+            request_id TEXT,
+            operation TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(length(state) > 0),
+            created_at_ms INTEGER NOT NULL DEFAULT 0
+        );",
+    ),
+    (
+        "runtime_events",
+        "CREATE TABLE IF NOT EXISTS runtime_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE RESTRICT,
+            request_id TEXT,
+            step_id INTEGER REFERENCES runtime_steps(id),
+            task_sequence INTEGER NOT NULL,
+            event_type TEXT NOT NULL CHECK(length(event_type) > 0),
+            payload_json TEXT NOT NULL,
+            created_at_ms INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(task_id, task_sequence)
+        );
+        CREATE TRIGGER IF NOT EXISTS runtime_events_no_update
+        BEFORE UPDATE ON runtime_events
+        BEGIN
+            SELECT RAISE(ABORT, 'runtime_events are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS runtime_events_no_delete
+        BEFORE DELETE ON runtime_events
+        BEGIN
+            SELECT RAISE(ABORT, 'runtime_events are append-only');
+        END;",
+    ),
+    (
         "locks",
         "CREATE TABLE IF NOT EXISTS locks (
             lock_id TEXT PRIMARY KEY,
@@ -661,4 +857,3 @@ const MIGRATIONS: &[(&str, &str)] = &[
         );",
     ),
 ];
-

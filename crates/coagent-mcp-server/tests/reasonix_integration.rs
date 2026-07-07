@@ -11,12 +11,16 @@ async fn reasonix_real_review_diff() {
     // Load API key from Reasonix .env
     if std::env::var("DEEPSEEK_API_KEY").is_err() {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            let env_file = std::path::PathBuf::from(&appdata).join("reasonix").join(".env");
+            let env_file = std::path::PathBuf::from(&appdata)
+                .join("reasonix")
+                .join(".env");
             if let Ok(content) = std::fs::read_to_string(&env_file) {
                 for line in content.lines() {
                     if let Some((k, v)) = line.trim().split_once('=') {
                         if k == "DEEPSEEK_API_KEY" && !v.is_empty() {
-                            unsafe { std::env::set_var("DEEPSEEK_API_KEY", v); }
+                            unsafe {
+                                std::env::set_var("DEEPSEEK_API_KEY", v);
+                            }
                         }
                     }
                 }
@@ -25,16 +29,22 @@ async fn reasonix_real_review_diff() {
     }
 
     let server_exe = env!("CARGO_BIN_EXE_coagent-mcp-server");
-    let reasonix_path = std::env::var("COAGENT_REASONIX_PATH")
-        .unwrap_or_else(|_| {
-            let appdata = std::env::var("APPDATA").unwrap_or_default();
-            let candidate = std::path::PathBuf::from(&appdata).join("npm").join("reasonix.cmd");
-            if candidate.exists() { candidate.to_string_lossy().to_string() } else { "reasonix".into() }
-        });
+    let reasonix_path = std::env::var("COAGENT_REASONIX_PATH").unwrap_or_else(|_| {
+        let appdata = std::env::var("APPDATA").unwrap_or_default();
+        let candidate = std::path::PathBuf::from(&appdata)
+            .join("npm")
+            .join("reasonix.cmd");
+        if candidate.exists() {
+            candidate.to_string_lossy().to_string()
+        } else {
+            "reasonix".into()
+        }
+    });
 
     let test_repo = std::env::temp_dir().join("coagent-integration-repo");
     let _ = std::fs::create_dir_all(test_repo.join(".agent").join("diffs"));
-    std::fs::write(test_repo.join(".agent").join("diffs").join("test.diff"),
+    std::fs::write(
+        test_repo.join(".agent").join("diffs").join("test.diff"),
         r#"diff --git a/src/main.rs b/src/main.rs
 --- a/src/main.rs
 +++ b/src/main.rs
@@ -49,7 +59,9 @@ async fn reasonix_real_review_diff() {
          repo_root: config.repo_root.clone(),
 -    })?;
 +    }).expect("kernel init failed");
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let task_id = format!("TASK-int-{}", std::process::id());
 
@@ -99,7 +111,10 @@ async fn reasonix_real_review_diff() {
             }
         }
     });
-    stdin.write_all(format!("{}\n", request).as_bytes()).await.unwrap();
+    stdin
+        .write_all(format!("{}\n", request).as_bytes())
+        .await
+        .unwrap();
     stdin.flush().await.unwrap();
 
     let start = Instant::now();
@@ -113,13 +128,24 @@ async fn reasonix_real_review_diff() {
         let read_result = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             reader.read_line(&mut line_buf),
-        ).await;
+        )
+        .await;
         match read_result {
             Ok(Ok(n)) if n > 0 => {
                 let trimmed = line_buf.trim();
-                if trimmed.is_empty() { continue; }
+                if trimmed.is_empty() {
+                    continue;
+                }
                 let elapsed = start.elapsed().as_secs();
-                println!("[{}s] {}", elapsed, if trimmed.len() > 250 { &trimmed[..250] } else { trimmed });
+                println!(
+                    "[{}s] {}",
+                    elapsed,
+                    if trimmed.len() > 250 {
+                        &trimmed[..250]
+                    } else {
+                        trimmed
+                    }
+                );
 
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
                     if parsed.get("id").and_then(|v| v.as_i64()) == Some(2) {
@@ -129,7 +155,7 @@ async fn reasonix_real_review_diff() {
                 }
             }
             Ok(Ok(0)) => break, // EOF
-            _ => continue, // timeout or error, retry
+            _ => continue,      // timeout or error, retry
         }
     }
 
@@ -146,8 +172,11 @@ async fn reasonix_real_review_diff() {
         eprintln!("=== STDERR ===\n{}", stderr_text);
     }
 
-    assert!(!review_response.is_empty(),
-        "No review response after {:.1}s", elapsed.as_secs_f64());
+    assert!(
+        !review_response.is_empty(),
+        "No review response after {:.1}s",
+        elapsed.as_secs_f64()
+    );
 
     let result: serde_json::Value = serde_json::from_str(&review_response).unwrap();
     let is_error = result["result"]["isError"].as_bool().unwrap_or(true);
@@ -164,7 +193,8 @@ async fn reasonix_real_review_diff() {
     if let Some(findings) = review["review"]["findings"].as_array() {
         println!("Findings: {} issues", findings.len());
         for (i, f) in findings.iter().enumerate() {
-            println!("  {}. [{}] {}",
+            println!(
+                "  {}. [{}] {}",
                 i + 1,
                 f.get("severity").and_then(|v| v.as_str()).unwrap_or("?"),
                 f.get("issue").and_then(|v| v.as_str()).unwrap_or("?")
@@ -175,11 +205,10 @@ async fn reasonix_real_review_diff() {
     assert_eq!(review["metadata"]["task_id"], task_id);
     assert_eq!(review["metadata"]["status"], "ok");
     assert!(review["review"]["confidence"].as_f64().unwrap() > 0.0);
-    assert!(review["review"]["findings"].as_array().unwrap().len() > 0,
-        "Expected at least one finding");
+    assert!(
+        review["review"]["findings"].as_array().unwrap().len() > 0,
+        "Expected at least one finding"
+    );
 
     println!("\nPASSED in {:.1}s", elapsed.as_secs_f64());
 }
-
-
-

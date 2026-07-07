@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fs,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -6,7 +6,10 @@ use std::{
 
 use coagent_runtime_core::{
     kernel::{AuditEvent, RuntimeConfig, RuntimeDecisionValue, RuntimeKernel, engine_results},
-    policy::{PermissionLevel, ResourceSet, RuntimeOperationRequest},
+    policy::{
+        ApprovalPolicy, BackendBinding, PermissionLevel, ResourceSet, RuntimeOperationRequest,
+        ToolCapabilities, ToolDefinition, ToolRegistry,
+    },
     state::{TaskState, TaskStateValue},
     storage::RuntimeStore,
 };
@@ -102,10 +105,122 @@ fn unknown_operation_is_denied_by_policy_gate() {
 }
 
 #[test]
+fn kernel_can_initialize_with_custom_tool_registry() {
+    let repo = temp_repo("custom-registry");
+    fs::create_dir_all(repo.join("docs")).expect("create docs");
+    let registry = ToolRegistry::new().register(ToolDefinition::new(
+        "agent.docs_read",
+        PermissionLevel::L0Readonly,
+        BackendBinding::Mock,
+        ApprovalPolicy::Never,
+        "docs_read_input_v1",
+        "docs_read_result_v1",
+        ToolCapabilities {
+            read_allow: vec!["docs/**".to_string()],
+            write_allow: vec![],
+            deny: vec![".git/**".to_string()],
+            network: false,
+        },
+    ));
+    let mut kernel = RuntimeKernel::initialize_with_tool_registry(config(repo), registry)
+        .expect("initialize kernel");
+
+    let docs_decision = kernel.evaluate_operation(RuntimeOperationRequest {
+        task_id: "TASK-docs".to_string(),
+        request_id: Some("REQ-docs".to_string()),
+        operation: "agent.docs_read".to_string(),
+        permission_level: PermissionLevel::L0Readonly,
+        resources: ResourceSet {
+            read_paths: vec!["docs/README.md".to_string()],
+            write_paths: vec![],
+            network: false,
+        },
+    });
+    assert_eq!(docs_decision.decision, RuntimeDecisionValue::Allow);
+
+    let review_decision =
+        kernel.evaluate_operation(allowed_request("TASK-review-unknown", "REQ-review-unknown"));
+    assert_eq!(review_decision.decision, RuntimeDecisionValue::Deny);
+    assert!(
+        review_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("unknown operation"))
+    );
+}
+
+#[test]
+fn kernel_emits_runtime_events_for_evaluate_and_complete() {
+    let repo = temp_repo("events");
+    let mut kernel = RuntimeKernel::initialize(config(repo.clone())).expect("initialize kernel");
+
+    let decision = kernel.evaluate_operation(allowed_request("TASK-events", "REQ-events"));
+    assert_eq!(decision.decision, RuntimeDecisionValue::Allow);
+
+    kernel
+        .complete_operation("TASK-events", Some("REQ-events"), "reasonix.review_diff")
+        .expect("complete operation");
+
+    let store = RuntimeStore::initialize(repo).expect("reopen store");
+    let events = store
+        .runtime_events("TASK-events")
+        .expect("load runtime events");
+    let event_types: Vec<_> = events
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .collect();
+
+    assert_eq!(
+        event_types,
+        vec!["step_started", "policy_evaluated", "lifecycle_closed"]
+    );
+    assert!(events.iter().all(|event| event.step_id.is_some()));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.payload_json.contains("\"decision\":\"allow\""))
+    );
+
+    let step = store
+        .runtime_step(events[0].step_id.expect("step id"))
+        .expect("load runtime step");
+    assert_eq!(step.state, "completed");
+}
+
+#[test]
+fn kernel_closes_runtime_step_when_policy_denies() {
+    let repo = temp_repo("events-deny");
+    let mut kernel = RuntimeKernel::initialize(config(repo.clone())).expect("initialize kernel");
+    let mut request = allowed_request("TASK-denied-events", "REQ-denied-events");
+    request.resources.network = true;
+
+    let decision = kernel.evaluate_operation(request);
+    assert_eq!(decision.decision, RuntimeDecisionValue::Deny);
+
+    let store = RuntimeStore::initialize(repo).expect("reopen store");
+    let events = store
+        .runtime_events("TASK-denied-events")
+        .expect("load runtime events");
+    let event_types: Vec<_> = events
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .collect();
+    assert_eq!(
+        event_types,
+        vec!["step_started", "policy_evaluated", "lifecycle_closed"]
+    );
+
+    let step = store
+        .runtime_step(events[0].step_id.expect("step id"))
+        .expect("load runtime step");
+    assert_eq!(step.state, "deny");
+}
+
+#[test]
 fn state_denial_beats_policy_allow() {
     let repo = temp_repo("state-deny");
     let store = RuntimeStore::initialize(&repo).expect("initialize store");
-    let terminal = TaskState::restore("TASK-state-deny", TaskStateValue::Completed, 0);
+    let terminal = TaskState::restore("TASK-state-deny", TaskStateValue::Cancelled, 0);
     store
         .upsert_task_state(&terminal)
         .expect("persist terminal state");
@@ -120,7 +235,7 @@ fn state_denial_beats_policy_allow() {
         decision
             .reasons
             .iter()
-            .any(|reason| reason.contains("terminal"))
+            .any(|reason| reason.contains("cancelled"))
     );
 }
 

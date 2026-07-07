@@ -1,11 +1,41 @@
 use serde::{Deserialize, Serialize};
 
+/// Severity of a review finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    Blocker,
+    Major,
+    Minor,
+    Note,
+}
+
+/// A single finding from a code review. Strongly-typed to ensure
+/// Reasonix output is structurally valid before reaching callers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Finding {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub severity: Severity,
+    pub category: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<i64>,
+    pub issue: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommendation: Option<String>,
+    pub confidence: f64,
+}
+
 /// Pure review result returned by backends (no system envelope fields).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PureReviewResult {
     pub verdict: String,
     pub summary: String,
-    pub findings: Vec<serde_json::Value>,
+    pub findings: Vec<Finding>,
     pub tests_to_run: Vec<String>,
     pub risks: Vec<String>,
     pub assumptions: Vec<String>,

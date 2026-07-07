@@ -210,5 +210,3 @@ fn malformed_json_returns_schema_error_without_panic() {
 
     assert!(error.to_string().contains("invalid JSON"));
 }
-
-

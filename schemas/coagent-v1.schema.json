@@ -6,100 +6,302 @@
   "$defs": {
     "review_diff_input_v1": {
       "type": "object",
-      "required": ["schema_version", "goal", "repo", "artifacts", "permission_level", "output_schema"],
+      "required": [
+        "schema_version",
+        "goal",
+        "repo",
+        "artifacts",
+        "permission_level",
+        "output_schema"
+      ],
       "additionalProperties": false,
       "properties": {
-        "schema_version": { "const": "review_diff_input_v1" },
-        "task_id": { "type": "string" },
-        "request_id": { "type": "string" },
-        "mode": { "const": "review_diff" },
-        "goal": { "type": "string", "minLength": 1 },
+        "schema_version": {
+          "const": "review_diff_input_v1"
+        },
+        "task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "review_diff"
+            }
+          ]
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
         "repo": {
           "type": "object",
-          "required": ["root"],
+          "required": [
+            "root"
+          ],
           "additionalProperties": false,
           "properties": {
-            "root": { "type": "string", "minLength": 1 },
-            "base_branch": { "type": "string" },
-            "working_branch": { "type": "string" }
+            "root": {
+              "type": "string",
+              "minLength": 1
+            },
+            "base_branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "working_branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         },
         "artifacts": {
           "type": "object",
-          "required": ["diff_path"],
+          "required": [
+            "diff_path"
+          ],
           "additionalProperties": false,
           "properties": {
-            "diff_path": { "type": "string", "minLength": 1 },
-            "context_path": { "type": "string" },
-            "test_log_path": { "type": "string" },
-            "build_log_path": { "type": "string" }
+            "diff_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "context_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "test_log_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "build_log_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         },
-        "focus": { "type": "array", "items": { "type": "string" } },
-        "constraints": { "type": "array", "items": { "type": "string" } },
+        "focus": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "constraints": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
         "budget": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "additionalProperties": false,
           "properties": {
-            "max_minutes": { "type": "integer", "minimum": 1 },
-            "max_output_chars": { "type": "integer", "minimum": 1 },
-            "max_steps": { "type": "integer", "minimum": 1 }
+            "max_minutes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_output_chars": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_steps": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
-        "permission_level": { "const": "L1_DIFF_REVIEW" },
-        "output_schema": { "const": "review_result_v1" }
+        "permission_level": {
+          "const": "L1_DIFF_REVIEW"
+        },
+        "output_schema": {
+          "const": "review_result_v1"
+        }
       }
     },
-
     "pure_review_result_v1": {
       "type": "object",
-      "required": ["verdict", "summary", "findings", "tests_to_run", "risks", "assumptions", "confidence"],
+      "required": [
+        "verdict",
+        "summary",
+        "findings",
+        "tests_to_run",
+        "risks",
+        "assumptions",
+        "confidence"
+      ],
       "additionalProperties": false,
       "properties": {
-        "verdict": { "type": "string", "enum": ["pass", "needs_fix", "risky", "unknown", "not_applicable"] },
-        "summary": { "type": "string", "minLength": 1 },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "needs_fix",
+            "risky",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
         "findings": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["severity", "category", "issue", "confidence"],
+            "required": [
+              "severity",
+              "category",
+              "issue",
+              "confidence"
+            ],
             "properties": {
-              "id": { "type": "string" },
-              "severity": { "type": "string", "enum": ["blocker", "major", "minor", "note"] },
-              "category": { "type": "string" },
-              "file": { "type": "string" },
-              "line": { "type": "integer" },
-              "issue": { "type": "string" },
-              "evidence": { "type": "string" },
-              "recommendation": { "type": "string" },
-              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              "id": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "blocker",
+                  "major",
+                  "minor",
+                  "note"
+                ]
+              },
+              "category": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "issue": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "recommendation": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
             }
           }
         },
-        "tests_to_run": { "type": "array", "items": { "type": "string" } },
-        "risks": { "type": "array", "items": { "type": "string" } },
-        "assumptions": { "type": "array", "items": { "type": "string" } },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "tests_to_run": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "risks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
-
     "coagent_review_wrapper_v1": {
       "type": "object",
-      "required": ["review", "metadata"],
+      "required": [
+        "review",
+        "metadata"
+      ],
       "additionalProperties": false,
       "properties": {
-        "review": { "$ref": "#/$defs/pure_review_result_v1" },
+        "review": {
+          "$ref": "#/$defs/pure_review_result_v1"
+        },
         "metadata": {
           "type": "object",
-          "required": ["schema_version", "task_id", "request_id", "status", "operation", "runtime_decision"],
+          "required": [
+            "schema_version",
+            "task_id",
+            "request_id",
+            "status",
+            "operation",
+            "runtime_decision"
+          ],
           "additionalProperties": false,
           "properties": {
-            "schema_version": { "const": "review_result_v1" },
-            "task_id": { "type": "string" },
-            "request_id": { "type": "string" },
-            "status": { "type": "string", "enum": ["ok", "partial", "error"] },
-            "operation": { "type": "string" },
-            "runtime_decision": { "type": "string", "enum": ["allow", "deny", "require_approval", "retryable_error", "fatal_error"] }
+            "schema_version": {
+              "const": "review_result_v1"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "request_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "partial",
+                "error"
+              ]
+            },
+            "operation": {
+              "type": "string"
+            },
+            "runtime_decision": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "deny",
+                "require_approval",
+                "retryable_error",
+                "fatal_error"
+              ]
+            }
           }
         }
       }
