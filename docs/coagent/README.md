@@ -1,4 +1,4 @@
-# Coagent Documentation
+﻿# Coagent Documentation
 
 ## Architecture
 
@@ -6,7 +6,8 @@
 - [Runtime](architecture/01-runtime.md) — State machine, policy engine, SQLite audit, pipeline, session recovery
 - [MCP Server](architecture/02-mcp-server.md) — rmcp integration, tool definition, pipeline stages, deployment
 - [General Agent Runtime Gaps](architecture/03-general-agent-runtime-gaps.md) — Resolved deficits from v1 to v2
-- [Architecture Backlog](architecture/04-backlog.md) — All 8 v2.1 implementation issues resolved
+- [Architecture Backlog](architecture/04-backlog.md) — All 8 v2.1 issues resolved
+- [v3 Blueprint](architecture/05-v3-blueprint.md) — Multi-agent ACP runtime vision
 
 ## Architecture Overview (v2.1)
 
