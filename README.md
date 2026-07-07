@@ -85,6 +85,9 @@ Real Reasonix ACP backend:                  implemented (DeepSeek models over AC
 AgentBackend trait:                        implemented (AgentBackend, BackendRequest/Response,
                                             BackendRegistry, AcpBackend, MockBackend)
 ToolSpec registry:                          implemented (declarative tool registration + capability tags)
+BackendSelector:                           implemented (DefaultBackendSelector, PreferredBackendSelector)
+Multi-backend registry:                     implemented (BackendRegistry with capability-based selection)
+Task/Operation/Attempt:                     implemented (operation_attempts table, 3-layer state)
 ACP contract tests:                         implemented (5 fake stdio + multi-step task + P2 integration)
 ```
 

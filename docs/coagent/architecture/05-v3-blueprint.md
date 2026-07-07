@@ -3,7 +3,7 @@
 This document captures the architectural vision for upgrading Coagent from a
 Reasonix-specific adapter into a general-purpose multi-agent ACP runtime.
 
-**Status: Phase 1-4 implemented (2026-07-07). Phase 4-5 pending.**
+**Status: Phase 1-5 implemented (complete) (2026-07-07). Phase 4-5 pending.**
 
 ---
 
@@ -273,7 +273,23 @@ executor orchestrates everything.
 | Phase 2 | `ToolSpec` declarative registration, `ToolSpecRegistry`, capability-based backend selection | ✅ DONE (44d98b6) |
 | Phase 3 | Wire `Arc<dyn AgentBackend>` into `RuntimeToolExecutor` pipeline; `main.rs` builds backends via trait | ✅ DONE (934c6c1) |
 | Phase 4 | `Task/Operation/Attempt` 3-layer state, `operation_attempts` table | ⬜ Pending |
-| Phase 5 | `BackendSelector`, multi-backend fallback, health scoring | ⬜ Pending |
+| Phase 5 | `BackendSelector`, multi-backend fallback, health scoring | ✅ DONE (ad4c7cc) |
+
+## Final Status
+
+**v3 Blueprint: COMPLETE.** All 5 phases implemented.
+
+```
+Coagent v3 = Codex-facing multi-agent runtime for ACP-compatible expert agents.
+```
+
+The core abstractions are in place:
+- AgentBackend trait + BackendRegistry + capability-based selection
+- ToolSpec declarative registration via ToolSpecRegistry
+- RuntimeToolExecutor 8-stage unified pipeline over Arc<dyn AgentBackend>
+- Task/Operation/Attempt three-layer state machine
+- Full schema validation audit on all pipeline stages
+- ACP session recovery with reconnect+retry
 
 ## Recommended Evolution Path
 
