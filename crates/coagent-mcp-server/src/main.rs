@@ -188,8 +188,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel: Arc::new(Mutex::new(kernel)),
         backend: backend.clone(),
         backend_registry: Some(std::sync::Arc::new(backend_registry)),
+        backend_selector: Some(std::sync::Arc::new(DefaultBackendSelector)),
         schema_registry: Arc::new(schema_registry),
         tool: review_tool,
+        required_capability: "code.review.diff".into(),
+        default_backend_id: "mock".into(),
     });
 
     let server = CoagentServer { executor };

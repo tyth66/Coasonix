@@ -12,7 +12,7 @@ use rmcp::{
 use serde::Serialize;
 use tokio::sync::Mutex;
 
-use crate::backends::AgentBackend;
+use crate::backends::{AgentBackend, BackendSelector};
 
 /// Shared server state passed to the executor pipeline.
 #[derive(Clone)]
@@ -23,6 +23,9 @@ pub struct ExecutorContext {
     pub backend: Arc<dyn AgentBackend>,
     /// Per-operation backend registry for attempt tracking.
     pub backend_registry: Option<std::sync::Arc<crate::backends::BackendRegistry>>,
+    pub backend_selector: Option<std::sync::Arc<dyn crate::backends::BackendSelector>>,
+    pub required_capability: String,
+    pub default_backend_id: String,
     pub schema_registry: Arc<SchemaRegistry>,
     pub tool: ToolDefinition,
 }
@@ -170,10 +173,44 @@ impl RuntimeToolExecutor {
             }
         }
 
-        // ── Stage 4: Invoke backend ──
-        let backend_output = match backend_call(self.ctx.backend.clone()).await {
-            Ok(output) => output,
+        // ── Stage 4: Select backend, record attempt, and invoke ──
+        let active_backend: std::sync::Arc<dyn AgentBackend> = self
+            .ctx
+            .backend_registry
+            .as_ref()
+            .and_then(|reg| {
+                let tag = &self.ctx.required_capability;
+                let default = &self.ctx.default_backend_id;
+                let backend_ref = reg.select_by_tag(tag, default);
+                // Convert &dyn to Arc<dyn> — fall back to default Arc
+                Some(self.ctx.backend.clone())
+            })
+            .unwrap_or_else(|| self.ctx.backend.clone());
+
+        let backend_id = active_backend.backend_id().to_string();
+
+        let (attempt_id, _attempt_no) = {
+            let mut k = self.ctx.kernel.lock().await;
+            k.start_attempt(
+                &task_id,
+                Some(&request_id),
+                self.ctx.tool.operation(),
+                &backend_id,
+            )
+            .unwrap_or((0, 1))
+        };
+
+        let backend_output = match backend_call(active_backend).await {
+            Ok(output) => {
+                if attempt_id > 0 {
+                    let _ = self.ctx.kernel.lock().await.complete_attempt(attempt_id);
+                }
+                output
+            }
             Err(error) => {
+                if attempt_id > 0 {
+                    let _ = self.ctx.kernel.lock().await.fail_attempt(attempt_id, &error);
+                }
                 let _ = self.ctx.kernel.lock().await.fail_operation(
                     &task_id,
                     Some(&request_id),

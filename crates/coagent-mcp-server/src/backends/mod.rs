@@ -15,7 +15,7 @@ use crate::config::BackendId;
 
 // Re-export the new v3 trait and types
 // v3 trait re-exports — used by acp_backend.rs and future tool specs
-pub use backend_trait::{AgentBackend, BackendCapabilities, BackendError, BackendRegistry, BackendRequest, BackendResponse};
+pub use backend_trait::{AgentBackend, BackendCapabilities, BackendError, BackendRegistry, BackendRequest, BackendResponse, BackendSelector, DefaultBackendSelector, PreferredBackendSelector};
 
 // Legacy v2 Backend enum — kept for backward compatibility during transition.
 // New code should use AgentBackend trait via BackendRegistry.
