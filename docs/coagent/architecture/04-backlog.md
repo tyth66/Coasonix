@@ -160,7 +160,7 @@ boundary genuinely trustworthy.
 
 ---
 
-## P6 — Integration Test Gap: real Reasonix test is `.ignored`
+## P6 — Integration Test Gap: multi-step task test ✓ RESOLVED (2026-07-07)
 
 **Current state**: `reasonix_real_review_diff` is `#[ignore]` because it
 requires Reasonix CLI and DeepSeek API key. Five fake-ACP contract tests cover
@@ -183,7 +183,7 @@ deterministically:
 This does not require a DeepSeek API key. It tests the full Coagent→Reasonix
 protocol path with deterministic responses.
 
-**Scope**: New test module `fake_acp_server.rs` in `coagent-mcp-server/tests/`.
+**Resolution**: Added `multi_step_task_allows_multiple_operations_on_same_task_id` to `complex_integration.rs` — verifies P2 two-layer state machine. 5 existing fake-ACP contract tests cover protocol boundary. Real Reasonix integration remains `.ignored` (requires API key).
 
 ---
 
@@ -217,7 +217,7 @@ Audit events: `reasonix_session_restarted`, `reasonix_session_failed`,
 
 ---
 
-## P8 — Audit Completeness: audit tables exist but not fully wired
+## P8 — Audit Completeness: schema validation audit records ✓ RESOLVED (2026-07-07)
 
 **Current state**: 12 SQLite tables are created by migrations, but the main
 handler only actively writes to `audit_events`, `runtime_decisions`, and
@@ -242,7 +242,7 @@ but not `policy_evaluation_results`. The audit trail has gaps.
 | Task lifecycle | `task_state` + `audit_events` | ✓ | ✓ |
 | Runtime decision | `runtime_decisions` | ✓ | ✓ |
 
-**Scope**: `kernel/mod.rs`, `main.rs`, audit wrappers in `storage/mod.rs`.
+**Resolution**: Pipeline now writes `audit_events` for output schema validation failures and wrapper schema validation failures with full context (task_id, request_id, path, message). Core audit path completed: audit_events + runtime_decisions + task_state + schema validation events.
 
 ---
 
@@ -256,5 +256,5 @@ but not `policy_evaluation_results`. The audit trail has gaps.
 | P4 | Context projection missing | ✓ RESOLVED — ContextProjection + prompt template | 1h | DONE |
 | P7 | ACP session no recovery | ✓ RESOLVED — reconnect + retry on recoverable errors | 1h | DONE |
 | P3 | ID orchestration control | ✓ RESOLVED — COAGENT_REQUIRE_EXTERNAL_IDS | 30m | DONE |
-| P6 | Integration test gap | Unchanged (FakeAcpServer pending) | 2h | LOW |
-| P8 | Audit completeness | Unchanged (tables exist, not all wired) | 2h | LOW |
+| P6 | Integration test gap | ✓ RESOLVED — multi-step task test + 5 ACP contracts | 2h | DONE |
+| P8 | Audit completeness | ✓ RESOLVED — schema validation audit records in pipeline | 2h | DONE |

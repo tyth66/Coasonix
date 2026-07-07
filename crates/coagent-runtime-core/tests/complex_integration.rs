@@ -745,3 +745,60 @@ fn cancel_propagation_marks_parent_and_allows_cleanup() {
         coagent_runtime_core::state::TaskStateError::TerminalState
     );
 }
+
+#[test]
+fn multi_step_task_allows_multiple_operations_on_same_task_id() {
+    let repo = temp_repo("multi-op");
+    let mut kernel = RuntimeKernel::initialize(RuntimeConfig {
+        repo_root: repo.clone(),
+    })
+    .expect("init");
+
+    // Operation 1: evaluate + complete
+    kernel.evaluate_operation(RuntimeOperationRequest {
+        task_id: "TASK-multi-op".into(),
+        request_id: Some("REQ-op1".into()),
+        operation: "reasonix.review_diff".into(),
+        permission_level: PermissionLevel::L1DiffReview,
+        resources: ResourceSet {
+            read_paths: vec![".agent/diffs/test.diff".into()],
+            write_paths: vec![".agent/results/r1.json".into()],
+            network: false,
+        },
+    });
+    kernel
+        .complete_operation("TASK-multi-op", Some("REQ-op1"), "reasonix.review_diff")
+        .expect("complete op1");
+
+    // Operation 2: evaluate + complete (same task)
+    kernel.evaluate_operation(RuntimeOperationRequest {
+        task_id: "TASK-multi-op".into(),
+        request_id: Some("REQ-op2".into()),
+        operation: "reasonix.review_diff".into(),
+        permission_level: PermissionLevel::L1DiffReview,
+        resources: ResourceSet {
+            read_paths: vec![".agent/diffs/test.diff".into()],
+            write_paths: vec![".agent/results/r2.json".into()],
+            network: false,
+        },
+    });
+    kernel
+        .complete_operation("TASK-multi-op", Some("REQ-op2"), "reasonix.review_diff")
+        .expect("complete op2");
+
+    // Task should still be Running (not terminal after individual ops)
+    let store = RuntimeStore::initialize(&repo).expect("store");
+    let state = store.load_task_state("TASK-multi-op").expect("load");
+    assert_eq!(state.value(), TaskStateValue::Running);
+
+    // Now complete the task itself
+    kernel
+        .complete_task("TASK-multi-op")
+        .expect("complete task");
+    let state = store.load_task_state("TASK-multi-op").expect("load");
+    assert_eq!(state.value(), TaskStateValue::Completed);
+
+    // Verify events: 2 step_started + 2 policy_evaluated + 2 lifecycle_closed = 6
+    let events = store.runtime_events("TASK-multi-op").expect("events");
+    assert_eq!(events.len(), 6);
+}
