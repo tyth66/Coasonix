@@ -69,10 +69,21 @@ pub trait AgentBackend: Send + Sync {
 // Backend registry
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/// Thread-safe registry of available backends.
-#[derive(Default)]
+/// Entry in the backend registry with runtime state.
+struct BackendEntry {
+    backend: Box<dyn AgentBackend>,
+    enabled: bool,
+}
+
+/// Registry of available backends with enabled/disabled state.
 pub struct BackendRegistry {
-    backends: HashMap<String, Box<dyn AgentBackend>>,
+    backends: HashMap<String, BackendEntry>,
+}
+
+impl Default for BackendRegistry {
+    fn default() -> Self {
+        Self { backends: HashMap::new() }
+    }
 }
 
 impl BackendRegistry {
@@ -81,26 +92,52 @@ impl BackendRegistry {
     }
 
     pub fn register(&mut self, backend: Box<dyn AgentBackend>) {
-        self.backends
-            .insert(backend.backend_id().to_string(), backend);
+        let id = backend.backend_id().to_string();
+        self.backends.insert(id, BackendEntry { backend, enabled: true });
     }
 
     pub fn get(&self, id: &str) -> Option<&dyn AgentBackend> {
-        self.backends.get(id).map(|b| b.as_ref())
+        self.backends.get(id).filter(|e| e.enabled).map(|e| e.backend.as_ref())
     }
 
-    /// Return the first backend whose capabilities include the given tag, or the default.
+    pub fn disable(&mut self, id: &str) -> bool {
+        self.backends.get_mut(id).map(|e| { e.enabled = false; true }).unwrap_or(false)
+    }
+
+    pub fn enable(&mut self, id: &str) -> bool {
+        self.backends.get_mut(id).map(|e| { e.enabled = true; true }).unwrap_or(false)
+    }
+
+    pub fn is_enabled(&self, id: &str) -> bool {
+        self.backends.get(id).map(|e| e.enabled).unwrap_or(false)
+    }
+
     pub fn select_by_tag(&self, tag: &str, default_id: &str) -> &dyn AgentBackend {
-        for backend in self.backends.values() {
-            if backend.capabilities().tags.iter().any(|t| t == tag) {
-                return backend.as_ref();
+        for entry in self.backends.values() {
+            if entry.enabled && entry.backend.capabilities().tags.iter().any(|t| t == tag) {
+                return entry.backend.as_ref();
             }
         }
-        self.get(default_id).expect("default backend not found")
+        self.get(default_id).expect("default backend not found or disabled")
     }
 
     pub fn list_ids(&self) -> Vec<String> {
         self.backends.keys().cloned().collect()
+    }
+
+    pub fn list_enabled_ids(&self) -> Vec<String> {
+        self.backends.iter()
+            .filter(|(_, e)| e.enabled)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    pub fn total_count(&self) -> usize {
+        self.backends.len()
+    }
+
+    pub fn enabled_count(&self) -> usize {
+        self.backends.values().filter(|e| e.enabled).count()
     }
 }
 
@@ -214,5 +251,28 @@ mod tests {
         // Both have tag "test", so the first one registered is returned
         let selected = registry.select_by_tag("test", "default");
         assert_eq!(selected.backend_id(), "default");
+    }
+
+    #[test]
+    fn registry_disable_hides_backend() {
+        let mut registry = BackendRegistry::new();
+        registry.register(Box::new(TestBackend { id: "default".into() }));
+        assert!(registry.is_enabled("default"));
+        assert!(registry.disable("default"));
+        assert!(!registry.is_enabled("default"));
+        assert!(registry.get("default").is_none());
+        assert!(registry.enable("default"));
+        assert!(registry.get("default").is_some());
+    }
+
+    #[test]
+    fn registry_enabled_count_excludes_disabled() {
+        let mut registry = BackendRegistry::new();
+        registry.register(Box::new(TestBackend { id: "a".into() }));
+        registry.register(Box::new(TestBackend { id: "b".into() }));
+        registry.disable("b");
+        assert_eq!(registry.total_count(), 2);
+        assert_eq!(registry.enabled_count(), 1);
+        assert_eq!(registry.list_enabled_ids(), vec!["a"]);
     }
 }
