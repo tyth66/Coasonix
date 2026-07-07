@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+﻿use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -221,6 +221,33 @@ impl RuntimeKernel {
         self.store.write_audit_event(&audit)?;
         self.close_runtime_step(task_id, request_id, operation, "failed")?;
         Ok(state.value())
+    }
+
+    
+
+    /// Start a new attempt for an operation. Returns the attempt row ID.
+    pub fn start_attempt(
+        &mut self,
+        task_id: &str,
+        request_id: Option<&str>,
+        operation: &str,
+        backend_id: &str,
+    ) -> Result<(i64, u32), RuntimeError> {
+        let next_number = self.store.next_attempt_number(task_id, request_id, operation)?;
+        let id = self.store.record_attempt(
+            task_id, request_id, operation, backend_id, next_number,
+        )?;
+        Ok((id, next_number))
+    }
+
+    /// Complete a successful attempt.
+    pub fn complete_attempt(&mut self, attempt_id: i64) -> Result<(), RuntimeError> {
+        Ok(self.store.complete_attempt(attempt_id)?)
+    }
+
+    /// Fail an attempt with an error message.
+    pub fn fail_attempt(&mut self, attempt_id: i64, error: &str) -> Result<(), RuntimeError> {
+        Ok(self.store.fail_attempt(attempt_id, error)?)
     }
 
     fn load_or_create_task_state(&self, task_id: &str) -> TaskState {

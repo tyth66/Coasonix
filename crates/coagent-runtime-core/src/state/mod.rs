@@ -268,6 +268,72 @@ fn is_legal_transition(current: TaskStateValue, next: TaskStateValue) -> bool {
     )
 }
 
+
+
+/// Per-backend-invocation attempt within an operation.
+/// Each operation may have multiple attempts (retries, fallbacks).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttemptStateValue {
+    /// Attempt is queued, not yet dispatched.
+    Pending,
+    /// Attempt is in progress (backend is executing).
+    Running,
+    /// Attempt completed successfully.
+    Succeeded,
+    /// Attempt failed (backend error, timeout, protocol error).
+    Failed,
+}
+
+impl AttemptStateValue {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Succeeded | Self::Failed)
+    }
+}
+
+/// Record of a single backend invocation attempt.
+#[derive(Debug, Clone)]
+pub struct OperationAttempt {
+    pub task_id: String,
+    pub request_id: Option<String>,
+    pub operation: String,
+    pub backend_id: String,
+    pub attempt_number: u32,
+    pub state: AttemptStateValue,
+    pub error: Option<String>,
+}
+
+impl OperationAttempt {
+    pub fn new(
+        task_id: impl Into<String>,
+        request_id: Option<String>,
+        operation: impl Into<String>,
+        backend_id: impl Into<String>,
+        attempt_number: u32,
+    ) -> Self {
+        Self {
+            task_id: task_id.into(),
+            request_id,
+            operation: operation.into(),
+            backend_id: backend_id.into(),
+            attempt_number,
+            state: AttemptStateValue::Pending,
+            error: None,
+        }
+    }
+
+    pub fn start(&mut self) {
+        self.state = AttemptStateValue::Running;
+    }
+
+    pub fn succeed(&mut self) {
+        self.state = AttemptStateValue::Succeeded;
+    }
+
+    pub fn fail(&mut self, error: impl Into<String>) {
+        self.state = AttemptStateValue::Failed;
+        self.error = Some(error.into());
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

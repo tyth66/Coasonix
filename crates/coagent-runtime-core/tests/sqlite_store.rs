@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fs,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -74,6 +74,7 @@ fn migrations_create_tables_in_required_order_before_initialize_succeeds() {
             "runtime_events",
             "locks",
             "artifacts",
+            "operation_attempts",
             "cache_entries",
         ]
     );

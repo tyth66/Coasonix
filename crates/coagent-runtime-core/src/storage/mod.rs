@@ -495,6 +495,84 @@ impl RuntimeStore {
             .map_err(StoreError::from)
     }
 
+    /// Get the next attempt number for an operation (1-based, max+1).
+    pub fn next_attempt_number(
+        &self,
+        task_id: &str,
+        request_id: Option<&str>,
+        operation: &str,
+    ) -> Result<u32, StoreError> {
+        let current: i64 = self.connection.query_row(
+            "SELECT COALESCE(MAX(attempt_number), 0) FROM operation_attempts
+             WHERE task_id = ?1
+               AND ((request_id IS NULL AND ?2 IS NULL) OR request_id = ?2)
+               AND operation = ?3",
+            params![task_id, request_id, operation],
+            |row| row.get(0),
+        )?;
+        Ok((current + 1) as u32)
+    }
+
+    /// Record a new operation attempt.
+    pub fn record_attempt(
+        &self,
+        task_id: &str,
+        request_id: Option<&str>,
+        operation: &str,
+        backend_id: &str,
+        attempt_number: u32,
+    ) -> Result<i64, StoreError> {
+        self.connection.execute(
+            "INSERT INTO tasks (task_id) VALUES (?1)
+             ON CONFLICT(task_id) DO NOTHING",
+            params![task_id],
+        )?;
+        self.connection.execute(
+            "INSERT INTO operation_attempts
+             (task_id, request_id, operation, backend_id, attempt_number, state, started_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'running', ?6)",
+            params![
+                task_id,
+                request_id,
+                operation,
+                backend_id,
+                attempt_number,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+            ],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Mark an attempt as succeeded.
+    pub fn complete_attempt(&self, attempt_id: i64) -> Result<(), StoreError> {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.connection.execute(
+            "UPDATE operation_attempts SET state = 'succeeded', finished_at_ms = ?1 WHERE id = ?2",
+            params![now_ms, attempt_id],
+        )?;
+        Ok(())
+    }
+
+    /// Mark an attempt as failed with an error.
+    pub fn fail_attempt(&self, attempt_id: i64, error: &str) -> Result<(), StoreError> {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.connection.execute(
+            "UPDATE operation_attempts SET state = 'failed', error_json = ?1, finished_at_ms = ?2 WHERE id = ?3",
+            params![error, now_ms, attempt_id],
+        )?;
+        Ok(())
+    }
+
+
     pub fn insert_lock(
         &self,
         lock_id: &str,
@@ -847,6 +925,21 @@ const MIGRATIONS: &[(&str, &str)] = &[
             hash TEXT
         );",
     ),
+    ("operation_attempts",
+        "CREATE TABLE IF NOT EXISTS operation_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE RESTRICT,
+            request_id TEXT,
+            operation TEXT NOT NULL,
+            backend_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL DEFAULT 1,
+            state TEXT NOT NULL CHECK(length(state) > 0),
+            error_json TEXT,
+            started_at_ms INTEGER NOT NULL DEFAULT 0,
+            finished_at_ms INTEGER
+        );",
+    ),
+
     (
         "cache_entries",
         "CREATE TABLE IF NOT EXISTS cache_entries (
