@@ -1,4 +1,4 @@
-﻿# MCP Server (rmcp) — v2.1
+# MCP Server (rmcp) — v2.1
 
 The MCP server is built with `rmcp` (official Rust MCP SDK, 14.7M downloads).
 
@@ -96,17 +96,19 @@ send_prompt() → Ok → return result
 send_prompt() → Err(Io|Protocol) → drop session → reconnect → retry same prompt
 send_prompt() → Err(Timeout) → drop session → propagate without retry
 send_prompt() → Err(Spawn) → propagate immediately
-tool_call after valid review JSON → return collected review
-tool_call before valid review JSON → protocol error
+tool_call after valid review JSON → return collected review immediately
+tool_call before valid review JSON → deny tool (TOOL_UNSUPPORTED), increment counters, continue collecting`n≥5 consecutive denied tool_calls → max tool calls protocol error, drop session without retry
 ```
 
 This ensures a single Reasonix child process crash does not permanently
 disable the Coagent server. The runner does not execute Reasonix-requested ACP
 tool calls; tool execution belongs to a later multi-tool design.
+Denied tool calls are recorded in `tool_call_count` and `denied_tool_call_count`.
 
 `ReasonixRunnerStats` records `has_session`, session creations, prompt
 attempts, reconnects, timeout/protocol/I/O/spawn error counts, and the last
-error string. These counters are observability only; they do not change routing
+error string, plus `tool_call_count` and `denied_tool_call_count`.
+These counters are observability only; they do not change routing
 or lifecycle decisions.
 
 ## Context Projection

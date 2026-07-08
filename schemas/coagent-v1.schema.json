@@ -346,6 +346,8 @@
                 "protocol_error_count",
                 "io_error_count",
                 "spawn_error_count",
+                "tool_call_count",
+                "denied_tool_call_count",
                 "last_error"
               ],
               "additionalProperties": false,
@@ -378,6 +380,14 @@
                   "minimum": 0
                 },
                 "spawn_error_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "tool_call_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "denied_tool_call_count": {
                   "type": "integer",
                   "minimum": 0
                 },
