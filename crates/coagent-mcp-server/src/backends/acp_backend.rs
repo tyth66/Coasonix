@@ -98,7 +98,7 @@ impl AgentBackend for MockBackend {
         let payload = serde_json::to_value(&review)
             .map_err(|e| BackendError::Protocol(format!("serialization: {e}")))?;
         Ok(BackendResponse {
-            output_schema: "review_result_v1".into(),
+            output_schema: "pure_review_result_v1".into(),
             payload,
         })
     }
@@ -127,7 +127,7 @@ mod tests {
         let result = rt.block_on(backend.invoke(BackendRequest {
             goal: "test".into(),
             operation: "review_diff".into(),
-            output_schema: "review_result_v1".into(),
+            output_schema: "pure_review_result_v1".into(),
             read_paths: vec![],
             context: serde_json::json!({}),
         }));

@@ -172,6 +172,16 @@ async fn mock_success_records_metadata_schema_audit_and_completes_task() {
     );
     assert_eq!(
         store
+            .schema_validation_expected_schemas("TASK-mock-success", "REQ-mock-success")
+            .expect("schema validation schemas"),
+        vec![
+            "review_diff_input_v1",
+            "pure_review_result_v1",
+            "coagent_review_wrapper_v1"
+        ]
+    );
+    assert_eq!(
+        store
             .load_task_state("TASK-mock-success")
             .expect("task state")
             .value(),

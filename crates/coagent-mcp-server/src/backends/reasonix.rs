@@ -166,7 +166,8 @@ impl AcpSession {
 
 use std::sync::Arc;
 
-/// Reasonix backend. Holds a shared, lazily-initialized ACP session.
+/// Reasonix-specific ACP runner. Holds a shared, lazily-initialized Reasonix
+/// session; it does not yet honor arbitrary AgentProfile command/args.
 /// The session is created on first use and reused for subsequent calls.
 #[derive(Clone)]
 pub struct ReasonixRunner {

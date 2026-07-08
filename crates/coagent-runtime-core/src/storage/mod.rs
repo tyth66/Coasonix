@@ -296,6 +296,21 @@ impl RuntimeStore {
         )?)
     }
 
+    pub fn schema_validation_expected_schemas(
+        &self,
+        task_id: &str,
+        request_id: &str,
+    ) -> Result<Vec<String>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT expected_schema FROM schema_validation_results
+             WHERE task_id = ?1 AND request_id = ?2
+             ORDER BY id",
+        )?;
+        let rows = statement.query_map(params![task_id, request_id], |row| row.get(0))?;
+        rows.collect::<Result<Vec<String>, _>>()
+            .map_err(StoreError::from)
+    }
+
     pub fn runtime_decision_audit_event_id(
         &self,
         task_id: &str,

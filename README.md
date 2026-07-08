@@ -76,9 +76,9 @@ Execution sandbox:                          implemented (env allowlist/denylist,
 Event-sourcing replay:                      implemented (replay_task_state, idempotency check)
 Artifact policy:                            implemented (allowlist/denylist, glob, traversal, symlink)
 Schema unification:                         implemented (SchemaRegistry single authority, JSON Schema 2020-12)
-SQLite audit (full):                        implemented (audit_events on all 3 schema validation stages:
-                                            input, output, wrapper — each with task_id, request_id,
-                                            expected_schema, errors[])
+SQLite audit (full):                        implemented (schema_validation_results + audit_events on all 3 stages:
+                                            input=review_diff_input_v1, output=pure_review_result_v1,
+                                            wrapper=coagent_review_wrapper_v1)
 Pure review result boundary:                implemented (Reasonix returns semantic-only; Coagent wraps)
 Mock Reasonix backend:                      implemented (instant mock review)
 Real Reasonix ACP backend:                  implemented (DeepSeek models over ACP protocol)

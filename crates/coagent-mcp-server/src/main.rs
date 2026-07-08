@@ -112,24 +112,9 @@ impl CoagentServer {
                 // Backend call closure
                 |backend: std::sync::Arc<dyn AgentBackend>| {
                     let ctx = context.clone();
-                    let output_schema = "review_result_v1".to_string();
                     async move {
-                        let request = crate::backends::BackendRequest {
-                            goal: ctx.goal.clone(),
-                            operation: "coagent.review_diff".into(),
-                            output_schema: output_schema.clone(),
-                            read_paths: vec![ctx.diff_path.clone()],
-                            context: serde_json::json!({
-                                "diff_path": ctx.diff_path,
-                                "context_path": ctx.context_path,
-                                "test_log_path": ctx.test_log_path,
-                                "build_log_path": ctx.build_log_path,
-                                "focus": ctx.focus,
-                                "constraints": ctx.constraints,
-                                "base_branch": ctx.base_branch,
-                                "working_branch": ctx.working_branch,
-                            }),
-                        };
+                        let request =
+                            ctx.to_backend_request("coagent.review_diff", "pure_review_result_v1");
                         let response = backend.invoke(request).await.map_err(|e| e.to_string())?;
                         serde_json::from_value(response.payload)
                             .map_err(|e| format!("deserialize review: {e}"))
@@ -214,6 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tool: review_tool,
         required_capability: "code.review.diff".into(),
         default_backend_id: "mock".into(),
+        backend_output_schema: "pure_review_result_v1".into(),
         complete_task_on_success: true,
     });
 

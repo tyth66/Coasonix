@@ -57,7 +57,7 @@ fn agent_call_count_only_increments_through_runtime_decision() {
     assert_eq!(state.agent_calls(), 1);
 }
 
-// Phase 1: New tests for 10-state FSM
+// Phase 1: Tests for 9-state FSM
 #[test]
 fn blocked_and_unblocked_allows_completion() {
     let mut state = TaskState::new("TASK-state");

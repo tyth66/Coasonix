@@ -44,6 +44,33 @@ mod tests {
         assert!(rendered.contains(".agent/logs/test.log"));
         assert!(rendered.contains(".agent/logs/build.log"));
     }
+
+    #[test]
+    fn backend_request_read_paths_include_optional_context_and_logs() {
+        let projection = ContextProjection {
+            goal: "review diff".into(),
+            diff_path: ".agent/diffs/current.diff".into(),
+            context_path: Some(".agent/context/review.md".into()),
+            test_log_path: Some(".agent/logs/test.log".into()),
+            build_log_path: Some(".agent/logs/build.log".into()),
+            focus: vec![],
+            constraints: vec![],
+            base_branch: None,
+            working_branch: None,
+        };
+
+        let request = projection.to_backend_request("coagent.review_diff", "pure_review_result_v1");
+
+        assert_eq!(
+            request.read_paths,
+            vec![
+                ".agent/diffs/current.diff",
+                ".agent/context/review.md",
+                ".agent/logs/test.log",
+                ".agent/logs/build.log"
+            ]
+        );
+    }
 }
 
 impl ContextProjection {
@@ -112,7 +139,7 @@ impl ContextProjection {
             goal: self.goal.clone(),
             operation: operation.to_string(),
             output_schema: output_schema.to_string(),
-            read_paths: vec![self.diff_path.clone()],
+            read_paths: self.read_paths(),
             context: serde_json::json!({
                 "diff_path": self.diff_path,
                 "context_path": self.context_path,
@@ -125,6 +152,22 @@ impl ContextProjection {
             }),
         }
     }
+
+    pub fn read_paths(&self) -> Vec<String> {
+        let mut paths = vec![self.diff_path.clone()];
+        paths.extend(
+            [
+                self.context_path.as_ref(),
+                self.test_log_path.as_ref(),
+                self.build_log_path.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .cloned(),
+        );
+        paths
+    }
+
     /// Build from the raw input fields (called by the tool handler).
     #[allow(clippy::too_many_arguments)]
     pub fn from_input(

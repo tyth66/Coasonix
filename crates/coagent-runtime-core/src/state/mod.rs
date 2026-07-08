@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-/// Expanded task state: 10 states covering queued, blocked, approval, retry, partial-completion.
+/// Expanded task state: 9 states covering queued, blocked, approval, retry, partial-completion.
 ///
 /// ┌─────────────┐
 /// │   Queued    │ ←── entry point (was Created)

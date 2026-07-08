@@ -39,9 +39,9 @@ input_schema, permission_level, artifact_plan, backend_prompt_builder, output_sc
 
 ## P2 — State Machine: two-layer split ✓ RESOLVED (2026-07-07)
 
-**Current state**: The 9-state FSM treats `Completed` as a task terminal state.
-`RuntimeKernel::complete_operation()` sets the task to `Completed`, after which
-all further `evaluate_operation()` calls are rejected.
+**Current state**: The 9-state FSM treats `Completed` as a task terminal state,
+but `RuntimeKernel::complete_operation()` only closes the per-operation step.
+`complete_task()` performs task-level terminal completion.
 
 **Problem**: A real Codex workflow wants one task_id spanning multiple Reasonix
 calls (review_architecture → review_diff → verify_tests → final_assessment).
@@ -62,7 +62,7 @@ OperationState (per-tool-call):
 - A separate `complete_task()` transitions TaskState to Completed
 - `runtime_steps` table already tracks per-operation records; OperationState formalizes this
 
-**Resolution**: `complete_operation()` no longer transitions the task to Completed — it only closes the runtime step and writes `operation_completed` audit events. New `complete_task()` method handles task-level terminal transitions. `evaluate_state()` only rejects Cancelled tasks (truly dead); Completed/Failed tasks can accept new operations. This enables multi-step task patterns (review_architecture → review_diff → verify_tests under one task_id).
+**Resolution**: `complete_operation()` no longer transitions the task to Completed — it only closes the runtime step and writes `operation_completed` audit events. New `complete_task()` method handles task-level terminal transitions. `coagent.review_diff` opts into `complete_task_on_success=true` because it is a single-operation review tool; multi-step task patterns should keep the task alive and call `complete_task()` only at the final boundary.
 
 ---
 
@@ -242,7 +242,7 @@ but not `policy_evaluation_results`. The audit trail has gaps.
 | Task lifecycle | `task_state` + `audit_events` | ✓ | ✓ |
 | Runtime decision | `runtime_decisions` | ✓ | ✓ |
 
-**Resolution**: All 3 schema validation stages write audit_events: input_schema_validation_failed, output_schema_validation_failed, wrapper_schema_validation_failed. Every record includes task_id, request_id, expected_schema, and errors[] array. Pre-gate input failures use placeholder IDs for audit completeness.
+**Resolution**: All 3 schema validation stages write `schema_validation_results` and paired `audit_events` on success and failure. Input records use `review_diff_input_v1`, backend output records use `pure_review_result_v1`, and wrapper records use `coagent_review_wrapper_v1`. Pre-gate input failures use placeholder IDs for audit completeness.
 
 ---
 

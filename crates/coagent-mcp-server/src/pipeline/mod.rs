@@ -25,6 +25,7 @@ pub struct ExecutorContext {
     pub backend_registry: Option<std::sync::Arc<crate::backends::BackendRegistry>>,
     pub required_capability: String,
     pub default_backend_id: String,
+    pub backend_output_schema: String,
     pub complete_task_on_success: bool,
     pub schema_registry: Arc<SchemaRegistry>,
     pub tool: ToolDefinition,
@@ -230,7 +231,7 @@ impl RuntimeToolExecutor {
             let _ = self.ctx.kernel.lock().await.record_schema_validation(
                 &task_id,
                 Some(&request_id),
-                self.ctx.tool.output_schema(),
+                &self.ctx.backend_output_schema,
                 "output",
                 false,
                 serde_json::json!([{
@@ -252,7 +253,7 @@ impl RuntimeToolExecutor {
         let _ = self.ctx.kernel.lock().await.record_schema_validation(
             &task_id,
             Some(&request_id),
-            self.ctx.tool.output_schema(),
+            &self.ctx.backend_output_schema,
             "output",
             true,
             "[]".to_string(),

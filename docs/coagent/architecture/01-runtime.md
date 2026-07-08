@@ -49,7 +49,10 @@ No JSON-RPC subprocess.
 
 Each `evaluate_operation()` creates a `runtime_steps` row. A single task can
 have multiple operations. `complete_operation()` closes the step; `complete_task()`
-transitions the task itself to terminal. This two-layer model enables:
+transitions the task itself to terminal. `coagent.review_diff` sets
+`complete_task_on_success=true`, so a standalone review call closes both its
+operation step and task; multi-operation tools should leave that policy false.
+This two-layer model enables:
 
 ```
 TASK-1:
@@ -115,9 +118,9 @@ Stage 1: Validate input schema   → SchemaRegistry
 Stage 2: Generate/enforce IDs    → UUID or COAGENT_REQUIRE_EXTERNAL_IDS
 Stage 3: Runtime gate            → evaluate_operation (Allow/Deny/RequireApproval)
 Stage 4: Invoke backend          → Mock | Reasonix ACP
-Stage 5: Validate output         → Finding-level + SchemaRegistry
-Stage 6: Validate wrapper schema → SchemaRegistry
-Stage 7: Complete lifecycle      → complete_operation (close step)
+Stage 5: Validate output         → Finding-level + pure_review_result_v1 audit
+Stage 6: Validate wrapper schema → coagent_review_wrapper_v1 via SchemaRegistry
+Stage 7: Complete lifecycle      → complete_operation, optionally complete_task
 Stage 8: Serialize response      → MCP CallToolResult JSON
 ```
 
@@ -160,7 +163,9 @@ enum value enforcement.
 
 ## ACP Session Recovery
 
-`ReasonixRunner::run()` implements reconnect + retry:
+`ReasonixRunner::run()` implements Reasonix-specific reconnect + retry. It
+does not yet honor arbitrary `AgentProfile.command` / `AgentProfile.args`; that
+remains the boundary for a future generic ACP backend.
 
 ```
 send_prompt → Ok → return
@@ -174,13 +179,14 @@ send_prompt → Err(non-recoverable) → propagate
 
 ### Schema Validation Audit (all 3 stages)
 
-Every schema validation failure writes an `audit_events` record:
+Every schema validation stage writes `schema_validation_results` plus a paired
+`audit_events` record:
 
 | Stage | event_type | payload |
 |-------|-----------|---------|
-| Input validation | `input_schema_validation_failed` | task_id, request_id, expected_schema, errors[] |
-| Output validation | `output_schema_validation_failed` | task_id, request_id, expected_schema, errors[] |
-| Wrapper validation | `wrapper_schema_validation_failed` | task_id, request_id, expected_schema, errors[] |
+| Input validation | `input_schema_validation_passed|failed` | expected_schema=`review_diff_input_v1`, valid, errors[] |
+| Output validation | `output_schema_validation_passed|failed` | expected_schema=`pure_review_result_v1`, valid, errors[] |
+| Wrapper validation | `wrapper_schema_validation_passed|failed` | expected_schema=`coagent_review_wrapper_v1`, valid, errors[] |
 
 Input validation failures before ID generation use `"pre-gate"` as placeholder
 task_id/request_id to ensure audit completeness even for pre-gate errors.

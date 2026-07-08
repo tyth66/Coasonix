@@ -34,15 +34,16 @@ impl CoagentServer {
 2. Generate/enforce IDs    → UUID or COAGENT_REQUIRE_EXTERNAL_IDS
 3. Runtime gate            → evaluate_operation (Allow/Deny/RequireApproval)
 4. Invoke backend          → Mock | Reasonix ACP (with session recovery)
-5. Validate output         → Finding-level + SchemaRegistry, audit on failure
-6. Validate wrapper schema → SchemaRegistry, audit on failure
-7. Complete lifecycle      → complete_operation (close step, task stays alive)
+5. Validate output         → Finding-level + pure_review_result_v1 audit
+6. Validate wrapper schema → coagent_review_wrapper_v1 via SchemaRegistry
+7. Complete lifecycle      → complete_operation; review_diff also complete_task_on_success
 8. Serialize response      → MCP CallToolResult JSON
 ```
 
-Each stage writes audit events on failure. Schema validation failures at
-stages 1, 5, and 6 all produce `audit_events` records with task_id,
-request_id, expected_schema, and errors[].
+Schema validation stages 1, 5, and 6 write `schema_validation_results` and
+paired `audit_events` for success and failure. Stage 5 records the pure backend
+schema (`pure_review_result_v1`); stage 6 records the final MCP wrapper schema
+(`coagent_review_wrapper_v1`).
 
 ## Backend Pluggability
 
@@ -57,7 +58,9 @@ enum Backend {
 
 ## Reasonix ACP Session Recovery
 
-The `ReasonixRunner` implements automatic reconnect + retry:
+The `ReasonixRunner` implements Reasonix-specific automatic reconnect + retry.
+It currently drives the `reasonix acp --model ...` path, not arbitrary
+`AgentProfile.command` / `AgentProfile.args` execution.
 
 ```
 send_prompt() → Ok → return result
