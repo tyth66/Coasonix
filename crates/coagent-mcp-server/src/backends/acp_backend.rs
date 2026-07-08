@@ -7,7 +7,7 @@ use super::backend_trait::{
     AgentBackend, BackendCapabilities, BackendError, BackendRequest, BackendResponse,
 };
 use super::context::ContextProjection;
-use super::reasonix::{ReasonixError, ReasonixRunner};
+use super::reasonix::{ReasonixError, ReasonixRunner, ReasonixRunnerStats};
 
 /// An ACP backend driven by an AgentProfile.
 pub struct AcpBackend {
@@ -34,6 +34,39 @@ impl AcpBackend {
     #[allow(dead_code)]
     pub fn with_model(_id: impl Into<String>, model: impl Into<String>, cwd: PathBuf) -> Self {
         Self::new(AgentProfile::reasonix(cwd, &model.into()))
+    }
+
+    pub fn runtime_status(&self) -> ReasonixRuntimeStatus {
+        self.runner.stats().into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ReasonixRuntimeStatus {
+    pub has_session: bool,
+    pub session_created_count: u64,
+    pub prompt_count: u64,
+    pub reconnect_count: u64,
+    pub timeout_count: u64,
+    pub protocol_error_count: u64,
+    pub io_error_count: u64,
+    pub spawn_error_count: u64,
+    pub last_error: Option<String>,
+}
+
+impl From<ReasonixRunnerStats> for ReasonixRuntimeStatus {
+    fn from(stats: ReasonixRunnerStats) -> Self {
+        Self {
+            has_session: stats.has_session,
+            session_created_count: stats.session_created_count,
+            prompt_count: stats.prompt_count,
+            reconnect_count: stats.reconnect_count,
+            timeout_count: stats.timeout_count,
+            protocol_error_count: stats.protocol_error_count,
+            io_error_count: stats.io_error_count,
+            spawn_error_count: stats.spawn_error_count,
+            last_error: stats.last_error,
+        }
     }
 }
 
@@ -147,5 +180,20 @@ mod tests {
                 .tags
                 .contains(&"code.review.diff".to_string())
         );
+    }
+
+    #[test]
+    fn acp_backend_runtime_status_starts_without_session() {
+        let profile = AgentProfile::reasonix(PathBuf::from("."), "deepseek-v4-flash");
+        let backend = AcpBackend::new(profile);
+
+        let status = backend.runtime_status();
+
+        assert!(!status.has_session);
+        assert_eq!(status.session_created_count, 0);
+        assert_eq!(status.prompt_count, 0);
+        assert_eq!(status.reconnect_count, 0);
+        assert_eq!(status.timeout_count, 0);
+        assert_eq!(status.last_error, None);
     }
 }

@@ -305,6 +305,93 @@
           }
         }
       }
+    },
+    "runtime_status_input_v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "runtime_status_input_v1"
+        }
+      }
+    },
+    "runtime_status_v1": {
+      "type": "object",
+      "required": [
+        "backend",
+        "repo_root",
+        "reasonix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "repo_root": {
+          "type": "string"
+        },
+        "reasonix": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "has_session",
+                "session_created_count",
+                "prompt_count",
+                "reconnect_count",
+                "timeout_count",
+                "protocol_error_count",
+                "io_error_count",
+                "spawn_error_count",
+                "last_error"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "has_session": {
+                  "type": "boolean"
+                },
+                "session_created_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "prompt_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "reconnect_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "timeout_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "protocol_error_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "io_error_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "spawn_error_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "last_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   }
 }

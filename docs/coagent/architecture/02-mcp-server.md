@@ -56,6 +56,33 @@ enum Backend {
 
 `COAGENT_BACKEND=mock|reasonix` overrides capability-based backend selection.
 
+## Runtime Status Tool
+
+`coagent.runtime_status` is a read-only MCP tool. It does not call Reasonix,
+does not invoke an `AgentBackend`, and does not enter the review execution
+pipeline. It reports the server's selected backend, repo root, and the current
+single-runner Reasonix stats when the selected backend is Reasonix.
+
+Current Reasonix status is intentionally single-runner scoped:
+
+```json
+{
+  "backend": "reasonix",
+  "repo_root": "D:/repo",
+  "reasonix": {
+    "has_session": true,
+    "session_created_count": 1,
+    "prompt_count": 2,
+    "reconnect_count": 0,
+    "timeout_count": 0,
+    "protocol_error_count": 0,
+    "io_error_count": 0,
+    "spawn_error_count": 0,
+    "last_error": null
+  }
+}
+```
+
 ## Reasonix ACP Session Recovery
 
 The `ReasonixRunner` implements one Reasonix-specific persistent ACP session.
@@ -69,10 +96,18 @@ send_prompt() → Ok → return result
 send_prompt() → Err(Io|Protocol) → drop session → reconnect → retry same prompt
 send_prompt() → Err(Timeout) → drop session → propagate without retry
 send_prompt() → Err(Spawn) → propagate immediately
+tool_call after valid review JSON → return collected review
+tool_call before valid review JSON → protocol error
 ```
 
 This ensures a single Reasonix child process crash does not permanently
-disable the Coagent server.
+disable the Coagent server. The runner does not execute Reasonix-requested ACP
+tool calls; tool execution belongs to a later multi-tool design.
+
+`ReasonixRunnerStats` records `has_session`, session creations, prompt
+attempts, reconnects, timeout/protocol/I/O/spawn error counts, and the last
+error string. These counters are observability only; they do not change routing
+or lifecycle decisions.
 
 ## Context Projection
 
@@ -95,6 +130,8 @@ Embedded `schemas/coagent-v1.schema.json` defines:
 - `review_diff_input_v1` — MCP request schema
 - `pure_review_result_v1` — Reasonix output schema
 - `coagent_review_wrapper_v1` — Coagent wrapped response
+- `runtime_status_input_v1` — read-only status tool input schema
+- `runtime_status_v1` — read-only status response schema
 
 ## ID Orchestration
 
@@ -119,6 +156,13 @@ coagent.review_diff
   output_schema: review_result_v1
   permission: L1_DIFF_REVIEW
   required_capability: code.review.diff
+  default_backend: mock
+
+coagent.runtime_status
+  input_schema: runtime_status_input_v1
+  output_schema: runtime_status_v1
+  permission: L0_READONLY
+  required_capability: runtime.status
   default_backend: mock
 ```
 

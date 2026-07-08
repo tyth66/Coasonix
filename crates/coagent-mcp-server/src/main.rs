@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use coagent_runtime_core::{
     kernel::{RuntimeConfig, RuntimeKernel},
@@ -8,7 +11,7 @@ use coagent_runtime_core::{
 use rmcp::{
     ErrorData, ServiceExt,
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
     tool, tool_router,
     transport::stdio,
 };
@@ -35,6 +38,16 @@ use tools::tool_spec::ToolSpecRegistry;
 #[derive(Clone)]
 struct CoagentServer {
     executor: RuntimeToolExecutor,
+    backend_id: String,
+    repo_root: PathBuf,
+    reasonix_backend: Option<Arc<AcpBackend>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+struct RuntimeStatusResponse {
+    backend: String,
+    repo_root: String,
+    reasonix: Option<backends::acp_backend::ReasonixRuntimeStatus>,
 }
 
 fn select_startup_backend(
@@ -59,6 +72,18 @@ fn select_startup_backend(
                 mock_backend
             }
         }
+    }
+}
+
+fn runtime_status_response(
+    backend_id: &str,
+    repo_root: &Path,
+    reasonix_backend: Option<&AcpBackend>,
+) -> RuntimeStatusResponse {
+    RuntimeStatusResponse {
+        backend: backend_id.into(),
+        repo_root: repo_root.to_string_lossy().into_owned(),
+        reasonix: reasonix_backend.map(AcpBackend::runtime_status),
     }
 }
 
@@ -141,6 +166,21 @@ impl CoagentServer {
             )
             .await
     }
+
+    #[tool(
+        name = "coagent.runtime_status",
+        description = "Return the current Coagent runtime status without invoking any backend."
+    )]
+    async fn runtime_status(&self) -> Result<CallToolResult, ErrorData> {
+        let status = runtime_status_response(
+            &self.backend_id,
+            &self.repo_root,
+            self.reasonix_backend.as_deref(),
+        );
+        let text = serde_json::to_string(&status)
+            .unwrap_or_else(|_| r#"{"error":"runtime status serialization failed"}"#.into());
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
 }
 
 #[rmcp_macros::tool_handler]
@@ -162,9 +202,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mock_backend: Arc<dyn AgentBackend> = Arc::new(MockBackend::new("mock"));
     backend_registry.register_arc(mock_backend.clone());
 
-    let reasonix_backend: Arc<dyn AgentBackend> = Arc::new(AcpBackend::new(
-        AgentProfile::reasonix(config.repo_root.clone(), &config.reasonix_model),
-    ));
+    let reasonix_acp_backend = Arc::new(AcpBackend::new(AgentProfile::reasonix(
+        config.repo_root.clone(),
+        &config.reasonix_model,
+    )));
+    let reasonix_backend: Arc<dyn AgentBackend> = reasonix_acp_backend.clone();
     backend_registry.register_arc(reasonix_backend.clone());
 
     // Build ToolSpec registry
@@ -179,6 +221,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mock_backend.clone(),
         reasonix_backend.clone(),
     );
+    let backend_id = backend.backend_id().to_string();
+    let selected_reasonix_backend =
+        (backend_id == reasonix_acp_backend.backend_id()).then_some(reasonix_acp_backend.clone());
 
     let kernel = RuntimeKernel::initialize(RuntimeConfig {
         repo_root: config.repo_root.clone(),
@@ -203,7 +248,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         complete_task_on_success: true,
     });
 
-    let server = CoagentServer { executor };
+    let server = CoagentServer {
+        executor,
+        backend_id,
+        repo_root: config.repo_root,
+        reasonix_backend: selected_reasonix_backend,
+    };
 
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
@@ -220,7 +270,7 @@ fn embedded_schema_registry() -> Result<SchemaRegistry, SchemaError> {
 
 #[cfg(test)]
 mod tests {
-    use super::select_startup_backend;
+    use super::{runtime_status_response, select_startup_backend};
     use crate::backends::mock::{Finding, PureReviewResult, Severity};
     use crate::backends::{
         AgentBackend,
@@ -332,5 +382,35 @@ mod tests {
         let selected = select_startup_backend(None, &tool_spec, mock_backend, reasonix_backend);
 
         assert_eq!(selected.backend_id(), "reasonix");
+    }
+
+    #[test]
+    fn runtime_status_reports_reasonix_stats_when_reasonix_is_selected() {
+        let repo_root = PathBuf::from("D:/repo");
+        let reasonix_backend =
+            AcpBackend::new(AgentProfile::reasonix(repo_root.clone(), "fake-model"));
+
+        let status = runtime_status_response("reasonix", &repo_root, Some(&reasonix_backend));
+
+        assert_eq!(status.backend, "reasonix");
+        assert_eq!(status.repo_root, repo_root.to_string_lossy());
+        let reasonix = status.reasonix.expect("reasonix status");
+        assert!(!reasonix.has_session);
+        assert_eq!(reasonix.session_created_count, 0);
+        assert_eq!(reasonix.prompt_count, 0);
+        assert_eq!(reasonix.reconnect_count, 0);
+        assert_eq!(reasonix.timeout_count, 0);
+        assert_eq!(reasonix.last_error, None);
+    }
+
+    #[test]
+    fn runtime_status_omits_reasonix_stats_for_mock_backend() {
+        let repo_root = PathBuf::from("D:/repo");
+
+        let status = runtime_status_response("mock", &repo_root, None);
+
+        assert_eq!(status.backend, "mock");
+        assert_eq!(status.repo_root, repo_root.to_string_lossy());
+        assert!(status.reasonix.is_none());
     }
 }

@@ -188,3 +188,66 @@ async fn mock_success_records_metadata_schema_audit_and_completes_task() {
         TaskStateValue::Completed
     );
 }
+
+#[tokio::test]
+async fn runtime_status_reports_mock_backend_without_invoking_reasonix() {
+    let server_exe = env!("CARGO_BIN_EXE_coagent-mcp-server");
+    let repo = temp_repo("runtime-status");
+
+    let mut child = Command::new(server_exe)
+        .env("COAGENT_REPO_ROOT", repo.to_string_lossy().to_string())
+        .env("COAGENT_BACKEND", "mock")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start coagent-mcp-server");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let stdout = child.stdout.take().expect("stdout");
+    let mut reader = BufReader::new(stdout);
+
+    stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}\n").await.unwrap();
+    stdin.flush().await.unwrap();
+
+    let mut init_line = String::new();
+    reader.read_line(&mut init_line).await.unwrap();
+    assert!(!init_line.trim().is_empty());
+
+    let request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "coagent.runtime_status",
+            "arguments": {}
+        }
+    });
+    stdin
+        .write_all(format!("{request}\n").as_bytes())
+        .await
+        .unwrap();
+    stdin.flush().await.unwrap();
+
+    let mut response_line = String::new();
+    reader.read_line(&mut response_line).await.unwrap();
+    drop(stdin);
+    child.kill().await.ok();
+    let _ = child.wait().await;
+
+    let response: serde_json::Value = serde_json::from_str(response_line.trim()).unwrap();
+    assert_eq!(response["id"], 2);
+    assert_eq!(response["result"]["isError"].as_bool(), Some(false));
+
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .expect("tool result text");
+    let status: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(status["backend"], "mock");
+    assert_eq!(
+        status["repo_root"].as_str(),
+        Some(repo.to_string_lossy().as_ref())
+    );
+    assert!(status["reasonix"].is_null());
+}

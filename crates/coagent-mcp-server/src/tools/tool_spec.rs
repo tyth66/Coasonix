@@ -48,6 +48,21 @@ impl ToolSpec {
             default_backend_id: "mock".into(),
         }
     }
+
+    /// Create the standard runtime_status tool specification.
+    pub fn runtime_status() -> Self {
+        Self {
+            name: "coagent.runtime_status".into(),
+            version: "1.0.0".into(),
+            input_schema: "runtime_status_input_v1".into(),
+            output_schema: "runtime_status_v1".into(),
+            permission_level: PermissionLevel::L0Readonly,
+            read_paths: vec![],
+            write_paths: vec![],
+            required_capability: "runtime.status".into(),
+            default_backend_id: "mock".into(),
+        }
+    }
 }
 
 /// Registry of all registered ToolSpecs.
@@ -78,6 +93,7 @@ impl ToolSpecRegistry {
     pub fn default_registry() -> Self {
         let mut registry = Self::new();
         registry.register(ToolSpec::review_diff());
+        registry.register(ToolSpec::runtime_status());
         // Future tools:
         // registry.register(ToolSpec::review_architecture());
         // registry.register(ToolSpec::security_audit());
@@ -114,6 +130,19 @@ mod tests {
         let registry = ToolSpecRegistry::default_registry();
         let names = registry.list_names();
         assert!(names.contains(&"coagent.review_diff".to_string()));
-        assert_eq!(names.len(), 1);
+        assert!(names.contains(&"coagent.runtime_status".to_string()));
+        assert_eq!(names.len(), 2);
+    }
+
+    #[test]
+    fn runtime_status_spec_is_read_only() {
+        let spec = ToolSpec::runtime_status();
+        assert_eq!(spec.name, "coagent.runtime_status");
+        assert_eq!(spec.input_schema, "runtime_status_input_v1");
+        assert_eq!(spec.output_schema, "runtime_status_v1");
+        assert_eq!(spec.permission_level, PermissionLevel::L0Readonly);
+        assert!(spec.read_paths.is_empty());
+        assert!(spec.write_paths.is_empty());
+        assert_eq!(spec.required_capability, "runtime.status");
     }
 }

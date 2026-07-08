@@ -49,6 +49,24 @@ fn valid_review_diff_input() -> serde_json::Value {
     })
 }
 
+fn valid_runtime_status() -> serde_json::Value {
+    json!({
+        "backend": "reasonix",
+        "repo_root": "D:/repo",
+        "reasonix": {
+            "has_session": true,
+            "session_created_count": 1,
+            "prompt_count": 2,
+            "reconnect_count": 0,
+            "timeout_count": 0,
+            "protocol_error_count": 0,
+            "io_error_count": 0,
+            "spawn_error_count": 0,
+            "last_error": null
+        }
+    })
+}
+
 #[test]
 fn validates_review_result_v1_from_root_schema_registry() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
@@ -67,6 +85,37 @@ fn validates_review_diff_input_v1_from_root_schema_registry() {
     let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
 
     let result = registry.validate("review_diff_input_v1", &valid_review_diff_input());
+
+    assert!(
+        result.valid,
+        "expected valid payload, got {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validates_runtime_status_v1_from_root_schema_registry() {
+    let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
+
+    let result = registry.validate("runtime_status_v1", &valid_runtime_status());
+
+    assert!(
+        result.valid,
+        "expected valid payload, got {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validates_runtime_status_v1_without_reasonix_stats() {
+    let registry = SchemaRegistry::load_from_path(schema_path()).expect("schema registry loads");
+    let payload = json!({
+        "backend": "mock",
+        "repo_root": "D:/repo",
+        "reasonix": null
+    });
+
+    let result = registry.validate("runtime_status_v1", &payload);
 
     assert!(
         result.valid,

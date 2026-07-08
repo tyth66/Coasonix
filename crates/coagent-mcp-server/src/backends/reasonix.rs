@@ -1,6 +1,7 @@
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Mutex as StdMutex;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -73,8 +74,7 @@ impl AcpSession {
             }),
         )
         .await?;
-        let init_resp = read_line(&mut reader).await?;
-        parse_response_frame(&init_resp, 1, "Reasonix ACP initialize failed")?;
+        read_response_frame(&mut reader, 1, "Reasonix ACP initialize failed").await?;
 
         // ACP session/new
         send_frame(
@@ -87,9 +87,8 @@ impl AcpSession {
         )
         .await?;
 
-        let session_resp = read_line(&mut reader).await?;
         let session =
-            parse_response_frame(&session_resp, 2, "Reasonix ACP session creation failed")?;
+            read_response_frame(&mut reader, 2, "Reasonix ACP session creation failed").await?;
         let session_id = session["result"]["sessionId"]
             .as_str()
             .ok_or_else(|| ReasonixError::Protocol("missing sessionId".into()))?
@@ -156,21 +155,30 @@ impl AcpSession {
 
             if msg.get("method").and_then(|v| v.as_str()) == Some("session/update")
                 && let Some(update) = msg.get("params").and_then(|p| p.get("update"))
-                && update.get("sessionUpdate").and_then(|v| v.as_str())
-                    == Some("agent_message_chunk")
-                && let Some(text) = update
-                    .get("content")
-                    .and_then(|c| c.get("text"))
-                    .and_then(|v| v.as_str())
             {
-                collected_text.push_str(text);
+                match update.get("sessionUpdate").and_then(|v| v.as_str()) {
+                    Some("agent_message_chunk") => {
+                        if let Some(text) = update
+                            .get("content")
+                            .and_then(|c| c.get("text"))
+                            .and_then(|v| v.as_str())
+                        {
+                            collected_text.push_str(text);
+                        }
+                    }
+                    Some("tool_call") => {
+                        return parse_review_text(&collected_text).map_err(|e| {
+                            ReasonixError::Protocol(format!(
+                                "unsupported ACP tool_call before valid review JSON: {e}"
+                            ))
+                        });
+                    }
+                    _ => {}
+                }
             }
         }
 
-        let review: PureReviewResult = serde_json::from_str(&collected_text)
-            .or_else(|_| extract_json(&collected_text))
-            .map_err(|e| ReasonixError::Protocol(format!("parse review: {e}")))?;
-        Ok(review)
+        parse_review_text(&collected_text)
     }
 }
 
@@ -188,6 +196,20 @@ pub struct ReasonixRunner {
     model: String,
     cwd: PathBuf,
     session: Arc<Mutex<Option<AcpSession>>>,
+    stats: Arc<StdMutex<ReasonixRunnerStats>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct ReasonixRunnerStats {
+    pub has_session: bool,
+    pub session_created_count: u64,
+    pub prompt_count: u64,
+    pub reconnect_count: u64,
+    pub timeout_count: u64,
+    pub protocol_error_count: u64,
+    pub io_error_count: u64,
+    pub spawn_error_count: u64,
+    pub last_error: Option<String>,
 }
 
 impl ReasonixRunner {
@@ -196,7 +218,12 @@ impl ReasonixRunner {
             model: model.into(),
             cwd,
             session: Arc::new(Mutex::new(None)),
+            stats: Arc::new(StdMutex::new(ReasonixRunnerStats::default())),
         }
+    }
+
+    pub fn stats(&self) -> ReasonixRunnerStats {
+        self.stats.lock().expect("reasonix stats mutex").clone()
     }
 
     pub async fn run(
@@ -208,41 +235,106 @@ impl ReasonixRunner {
         let mut guard = self.session.lock().await;
 
         if guard.is_none() {
-            let session = AcpSession::connect(&self.model, &self.cwd).await?;
+            let session = match AcpSession::connect(&self.model, &self.cwd).await {
+                Ok(session) => session,
+                Err(error) => {
+                    self.record_error(&error);
+                    return Err(error);
+                }
+            };
+            self.record_session_created();
             *guard = Some(session);
         }
 
         let first = {
             let session = guard.as_mut().unwrap();
+            self.record_prompt();
             session.send_prompt(goal, diff_path, context).await
         };
 
         match first {
             Ok(result) => Ok(result),
             Err(error) if error.should_drop_session() => {
+                self.record_error(&error);
                 eprintln!(
                     "[coagent] Reasonix session failed ({}), dropping session",
                     error
                 );
                 *guard = None;
+                self.set_has_session(false);
                 if !error.is_retryable() {
                     return Err(error);
                 }
-                let mut session =
-                    AcpSession::connect(&self.model, &self.cwd)
-                        .await
-                        .map_err(|connect_err| {
-                            ReasonixError::Protocol(format!(
-                                "session recovery failed after {}: {}",
-                                error, connect_err
-                            ))
-                        })?;
+                self.record_reconnect();
+                let mut session = match AcpSession::connect(&self.model, &self.cwd).await {
+                    Ok(session) => session,
+                    Err(connect_err) => {
+                        self.record_error(&connect_err);
+                        return Err(ReasonixError::Protocol(format!(
+                            "session recovery failed after {}: {}",
+                            error, connect_err
+                        )));
+                    }
+                };
+                self.record_session_created();
+                self.record_prompt();
                 let retry = session.send_prompt(goal, diff_path, context).await;
-                *guard = Some(session);
+                if let Err(retry_error) = &retry {
+                    self.record_error(retry_error);
+                }
+                if retry
+                    .as_ref()
+                    .err()
+                    .is_some_and(ReasonixError::should_drop_session)
+                {
+                    *guard = None;
+                    self.set_has_session(false);
+                } else {
+                    *guard = Some(session);
+                    self.set_has_session(true);
+                }
                 retry
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.record_error(&error);
+                Err(error)
+            }
         }
+    }
+
+    fn record_session_created(&self) {
+        let mut stats = self.stats.lock().expect("reasonix stats mutex");
+        stats.has_session = true;
+        stats.session_created_count += 1;
+    }
+
+    fn set_has_session(&self, has_session: bool) {
+        self.stats.lock().expect("reasonix stats mutex").has_session = has_session;
+    }
+
+    fn record_prompt(&self) {
+        self.stats
+            .lock()
+            .expect("reasonix stats mutex")
+            .prompt_count += 1;
+    }
+
+    fn record_reconnect(&self) {
+        self.stats
+            .lock()
+            .expect("reasonix stats mutex")
+            .reconnect_count += 1;
+    }
+
+    fn record_error(&self, error: &ReasonixError) {
+        let mut stats = self.stats.lock().expect("reasonix stats mutex");
+        match error {
+            ReasonixError::Spawn(_) => stats.spawn_error_count += 1,
+            ReasonixError::Io(_) => stats.io_error_count += 1,
+            ReasonixError::Protocol(_) => stats.protocol_error_count += 1,
+            ReasonixError::Timeout(_) => stats.timeout_count += 1,
+        }
+        stats.last_error = Some(error.to_string());
     }
 }
 
@@ -328,6 +420,7 @@ GOAL: {goal}
 DIFF PATH: {diff_path}
 {context_section}
 Read the available files above, analyze the diff, then return your review as a single JSON object.
+Do not call tools, tasks, commands, or external agents.
 Return ONLY the JSON. No markdown, no explanation, no surrounding text.
 
 {
@@ -359,6 +452,7 @@ RULES:
 4. confidence is 0.0-1.0 (0 = completely uncertain, 1 = completely certain)
 5. If no issues found: "findings": []
 6. Return ONLY the JSON object
+7. Do not call tools, tasks, commands, or external agents
 "#;
 
 fn build_review_prompt(
@@ -372,28 +466,39 @@ fn build_review_prompt(
         .replace("{context_section}", &context.render_context_section())
 }
 
-fn parse_response_frame(
-    line: &str,
+async fn read_response_frame(
+    reader: &mut BufReader<tokio::process::ChildStdout>,
     expected_id: u64,
     context: &str,
 ) -> Result<serde_json::Value, ReasonixError> {
-    let frame: serde_json::Value = serde_json::from_str(line)
-        .map_err(|e| ReasonixError::Protocol(format!("{context}: invalid frame: {e}")))?;
-    if frame.get("id").and_then(|v| v.as_u64()) != Some(expected_id) {
-        return Err(ReasonixError::Protocol(format!(
-            "{context}: unexpected response id"
-        )));
+    loop {
+        let line = read_line(reader).await?;
+        let frame: serde_json::Value = serde_json::from_str(&line)
+            .map_err(|e| ReasonixError::Protocol(format!("{context}: invalid frame: {e}")))?;
+        let Some(id) = frame.get("id").and_then(|v| v.as_u64()) else {
+            if frame.get("method").is_some() {
+                continue;
+            }
+            return Err(ReasonixError::Protocol(format!(
+                "{context}: response frame missing id"
+            )));
+        };
+        if id != expected_id {
+            return Err(ReasonixError::Protocol(format!(
+                "{context}: unexpected response id"
+            )));
+        }
+        if let Some(error) = frame.get("error") {
+            return Err(ReasonixError::Protocol(format!(
+                "{context}: {}",
+                error
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown error")
+            )));
+        }
+        return Ok(frame);
     }
-    if let Some(error) = frame.get("error") {
-        return Err(ReasonixError::Protocol(format!(
-            "{context}: {}",
-            error
-                .get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown error")
-        )));
-    }
-    Ok(frame)
 }
 
 fn extract_json(text: &str) -> Result<PureReviewResult, serde_json::Error> {
@@ -408,6 +513,12 @@ fn extract_json(text: &str) -> Result<PureReviewResult, serde_json::Error> {
         }
     }
     serde_json::from_str(text)
+}
+
+fn parse_review_text(text: &str) -> Result<PureReviewResult, ReasonixError> {
+    serde_json::from_str(text)
+        .or_else(|_| extract_json(text))
+        .map_err(|e| ReasonixError::Protocol(format!("parse review: {e}")))
 }
 
 #[cfg(test)]
@@ -477,6 +588,17 @@ mod tests {
         assert_eq!(fake.count("initialize"), 1);
         assert_eq!(fake.count("session_new"), 1);
         assert_eq!(fake.count("prompt"), 2);
+
+        let stats = runner.stats();
+        assert!(stats.has_session);
+        assert_eq!(stats.session_created_count, 1);
+        assert_eq!(stats.prompt_count, 2);
+        assert_eq!(stats.reconnect_count, 0);
+        assert_eq!(stats.timeout_count, 0);
+        assert_eq!(stats.protocol_error_count, 0);
+        assert_eq!(stats.io_error_count, 0);
+        assert_eq!(stats.spawn_error_count, 0);
+        assert_eq!(stats.last_error, None);
     }
 
     #[tokio::test]
@@ -505,6 +627,22 @@ mod tests {
         assert_eq!(fake.count("initialize"), 2);
         assert_eq!(fake.count("session_new"), 2);
         assert_eq!(fake.count("prompt"), 2);
+
+        let stats = runner.stats();
+        assert!(stats.has_session);
+        assert_eq!(stats.session_created_count, 2);
+        assert_eq!(stats.prompt_count, 2);
+        assert_eq!(stats.reconnect_count, 1);
+        assert_eq!(stats.timeout_count, 0);
+        assert_eq!(stats.protocol_error_count, 1);
+        assert_eq!(stats.io_error_count, 0);
+        assert_eq!(stats.spawn_error_count, 0);
+        assert!(
+            stats
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("ACP process closed stdout"))
+        );
     }
 
     #[tokio::test]
@@ -528,6 +666,22 @@ mod tests {
         assert_eq!(fake.count("spawn"), 1);
         assert_eq!(fake.count("prompt"), 1);
 
+        let stats = runner.stats();
+        assert!(!stats.has_session);
+        assert_eq!(stats.session_created_count, 1);
+        assert_eq!(stats.prompt_count, 1);
+        assert_eq!(stats.reconnect_count, 0);
+        assert_eq!(stats.timeout_count, 1);
+        assert_eq!(stats.protocol_error_count, 0);
+        assert_eq!(stats.io_error_count, 0);
+        assert_eq!(stats.spawn_error_count, 0);
+        assert!(
+            stats
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("ACP prompt timed out"))
+        );
+
         let result = runner
             .run("second prompt uses fresh session", "changes.diff", &context)
             .await
@@ -538,6 +692,12 @@ mod tests {
         assert_eq!(fake.count("initialize"), 2);
         assert_eq!(fake.count("session_new"), 2);
         assert_eq!(fake.count("prompt"), 2);
+
+        let stats = runner.stats();
+        assert!(stats.has_session);
+        assert_eq!(stats.session_created_count, 2);
+        assert_eq!(stats.prompt_count, 2);
+        assert_eq!(stats.timeout_count, 1);
     }
 
     #[tokio::test]
@@ -582,12 +742,42 @@ mod tests {
             "policy",
             "CONSTRAINTS",
             "avoid new dependencies",
+            "Do not call tools, tasks, commands, or external agents.",
         ] {
             assert!(
                 prompt_frame.contains(expected),
                 "prompt frame missing {expected}: {prompt_frame}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn reasonix_returns_collected_review_when_tool_call_follows_valid_json() {
+        let _guard = ENV_LOCK.lock().await;
+        let fake = FakeReasonix::new("tool-call-after-review");
+        let _env = TestEnv::set(&[
+            ("COAGENT_REASONIX_PATH", fake.executable_path()),
+            (
+                "COAGENT_FAKE_REASONIX_CASE",
+                "tool_call_after_review".into(),
+            ),
+            ("COAGENT_AGENT_TIMEOUT_MS", "1000".into()),
+        ]);
+
+        let runner = ReasonixRunner::new("fake-model", fake.dir.clone());
+
+        let result = runner
+            .run(
+                "review with trailing unsupported tool call",
+                "changes.diff",
+                &ContextProjection::default(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.verdict, "needs_fix");
+        assert_eq!(result.summary, "Fake ACP review.");
+        assert_eq!(runner.stats().prompt_count, 1);
     }
 
     #[tokio::test]
@@ -619,6 +809,19 @@ mod tests {
         assert!(message.contains("Reasonix CLI not found"));
         assert!(message.contains("COAGENT_REASONIX_PATH"));
         assert!(message.contains("PATH"));
+
+        let stats = runner.stats();
+        assert!(!stats.has_session);
+        assert_eq!(stats.session_created_count, 0);
+        assert_eq!(stats.prompt_count, 0);
+        assert_eq!(stats.spawn_error_count, 1);
+        assert_eq!(stats.timeout_count, 0);
+        assert!(
+            stats
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("Reasonix CLI not found"))
+        );
     }
 
     #[tokio::test]
@@ -669,6 +872,36 @@ mod tests {
 
         assert!(matches!(error, ReasonixError::Protocol(_)));
         assert!(error.to_string().contains("session rejected"));
+    }
+
+    #[tokio::test]
+    async fn reasonix_connect_ignores_session_update_before_session_new_response() {
+        let _guard = ENV_LOCK.lock().await;
+        let fake = FakeReasonix::new("session-update-before-response");
+        let _env = TestEnv::set(&[
+            ("COAGENT_REASONIX_PATH", fake.executable_path()),
+            (
+                "COAGENT_FAKE_REASONIX_CASE",
+                "session_new_update_before_response".into(),
+            ),
+            ("COAGENT_AGENT_TIMEOUT_MS", "1000".into()),
+        ]);
+
+        let runner = ReasonixRunner::new("fake-model", fake.dir.clone());
+
+        let result = runner
+            .run(
+                "review despite session update notification",
+                "changes.diff",
+                &ContextProjection::default(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.verdict, "needs_fix");
+        let stats = runner.stats();
+        assert!(stats.has_session);
+        assert_eq!(stats.session_created_count, 1);
     }
 
     #[tokio::test]
@@ -873,6 +1106,9 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             Write-Frame @{ jsonrpc = "2.0"; id = $msg.id; error = @{ code = -32001; message = "session rejected" } }
             exit 0
         }
+        if ($case -eq "session_new_update_before_response") {
+            Write-Frame @{ jsonrpc = "2.0"; method = "session/update"; params = @{ sessionId = "fake-session"; update = @{ sessionUpdate = "available_commands_update"; availableCommands = @() } } }
+        }
         Write-Frame @{ jsonrpc = "2.0"; id = $msg.id; result = @{ sessionId = "fake-session" } }
     }
     elseif ($msg.method -eq "session/prompt") {
@@ -914,6 +1150,27 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 }
             }
         }
+
+        if ($case -eq "tool_call_after_review") {
+            Write-Frame @{
+                jsonrpc = "2.0"
+                method = "session/update"
+                params = @{
+                    sessionId = "fake-session"
+                    update = @{
+                        sessionUpdate = "tool_call"
+                        toolCallId = "call_fake"
+                        title = "task"
+                        kind = "other"
+                        status = "pending"
+                        rawInput = @{ description = "unneeded after valid JSON" }
+                    }
+                }
+            }
+            Start-Sleep -Milliseconds 1000
+            exit 0
+        }
+
         Write-Frame @{ jsonrpc = "2.0"; id = $msg.id; result = @{ stopReason = "end_turn" } }
     }
 }
@@ -966,6 +1223,9 @@ while IFS= read -r line; do
       printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32001,"message":"session rejected"}}\n' "$id"
       exit 0
     fi
+    if [ "$case_name" = "session_new_update_before_response" ]; then
+      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"available_commands_update","availableCommands":[]}}}\n'
+    fi
     printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"fake-session"}}\n' "$id"
   elif [ "$method" = "session/prompt" ]; then
     increment_count prompt
@@ -987,6 +1247,11 @@ while IFS= read -r line; do
       printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"{\"verdict\":\"needs_fix\",\"summary\":\"Fake ACP review.\","}}}}\n'
       printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\"findings\":[],\"tests_to_run\":[\"cargo test -p coagent-mcp-server\"],"}}}}\n'
       printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\"risks\":[],\"assumptions\":[],\"confidence\":0.73}"}}}}\n'
+    fi
+    if [ "$case_name" = "tool_call_after_review" ]; then
+      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake","title":"task","kind":"other","status":"pending","rawInput":{"description":"unneeded after valid JSON"}}}}\n'
+      sleep 1
+      exit 0
     fi
     printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
   fi
