@@ -71,6 +71,10 @@ Context projection:                         implemented (all 9 input fields reac
 Finding type safety:                        implemented (Finding struct + Severity enum, dual-layer validation)
 ID orchestration:                           implemented (COAGENT_REQUIRE_EXTERNAL_IDS)
 ACP session recovery:                       implemented (reconnect + retry on Io/Protocol errors)
+ReasonixRunner observability:              implemented (ReasonixRunnerStats: sessions, prompts, reconnects,
+                                            errors, tool_call/denied counters; coagent.runtime_status tool)
+ACP tool_call policy:                      implemented (deny unsupported tools with TOOL_UNSUPPORTED rejection,
+                                            max 5 consecutive denied tool_calls, non-retryable)
 Policy engine:                              implemented (operation, permission, path, network, approval)
 Execution sandbox:                          implemented (env allowlist/denylist, resource budgets)
 Event-sourcing replay:                      implemented (replay_task_state, idempotency check)
@@ -89,12 +93,14 @@ BackendSelector:                           implemented (DefaultBackendSelector, 
 Multi-backend registry:                     implemented (BackendRegistry with capability-based selection)
 Task/Operation/Attempt:                     implemented (operation_attempts table, 3-layer state)
 ACP contract tests:                         implemented (5 fake stdio + multi-step task + P2 integration)
+ACP tool_call integration tests:           implemented (3 fake scenarios: existing-review return,
+                                            deny-then-collect, max-tool-calls fail-fast)
 ```
 
 ## Verification
 
 ```powershell
-cargo test --workspace    # 157 pass, 1 ignored (live Reasonix integration)
+cargo test --workspace    # 176 pass, 1 ignored (live Reasonix integration)
 cargo build -p coagent-mcp-server
 cargo fmt --all -- --check
 cargo clippy --workspace -- -D warnings
@@ -108,5 +114,6 @@ cargo clippy --workspace -- -D warnings
 - [General Agent Runtime Gaps](docs/coagent/architecture/03-general-agent-runtime-gaps.md)
 - [Architecture Backlog](docs/coagent/architecture/04-backlog.md) — All 8 issues resolved
 - [v3.1 Roadmap](docs/coagent/architecture/06-v3.1-roadmap.md) — Runtime behavior gaps
+- [Session Management](docs/coagent/architecture/07-session-management.md) — Current single-runner + future SessionKey direction
 - [v3 Blueprint](docs/coagent/architecture/05-v3-blueprint.md) — Multi-agent ACP runtime vision
 - [Documentation Index](docs/coagent/README.md)

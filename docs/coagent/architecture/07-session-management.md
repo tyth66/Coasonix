@@ -22,14 +22,15 @@ Ok                 -> keep session
 Io | Protocol      -> drop session, reconnect once, retry same prompt
 Timeout            -> drop session, return timeout without retry
 Spawn              -> return immediately
-tool_call after valid review JSON  -> return collected review
-tool_call before valid review JSON -> protocol error
+tool_call after valid review JSON  -> return collected review immediately
+`n≥5 consecutive denied tool_calls -> max tool calls protocol error, drop session without retry`ntool_call before valid review JSON -> deny (TOOL_UNSUPPORTED), increment counters, continue collecting
 ```
 
 Current observability is exposed through `ReasonixRunnerStats` and
 `coagent.runtime_status`. The status view is single-runner scoped and reports
 whether a session exists, how many sessions were created, prompt attempts,
 reconnects, timeout/protocol/I/O/spawn error counts, and the last error string.
+Stats also include 	ool_call_count and denied_tool_call_count.
 
 The current runner does not execute Reasonix-requested ACP tool calls. That
 capability is intentionally left out of the single-lane baseline.

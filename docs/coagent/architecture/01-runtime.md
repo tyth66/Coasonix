@@ -176,6 +176,9 @@ send_prompt → Ok → return
 send_prompt → Err(recoverable: Io|Protocol) → drop session → reconnect → retry
 send_prompt → Err(Timeout) → drop session → propagate without retry
 send_prompt → Err(Spawn) → propagate
+tool_call after valid review JSON → return collected review immediately
+tool_call before valid review JSON → deny (TOOL_UNSUPPORTED), increment counters, continue collecting
+≥5 consecutive denied tool_calls → max tool calls protocol error, drop session without retry
 ```
 
 ## Audit (SQLite)
