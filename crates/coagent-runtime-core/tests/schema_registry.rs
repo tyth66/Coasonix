@@ -62,8 +62,6 @@ fn valid_runtime_status() -> serde_json::Value {
             "protocol_error_count": 0,
             "io_error_count": 0,
             "spawn_error_count": 0,
-            "tool_call_count": 0,
-            "denied_tool_call_count": 0,
             "last_error": null
         }
     })

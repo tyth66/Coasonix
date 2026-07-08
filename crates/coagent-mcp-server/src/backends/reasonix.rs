@@ -109,7 +109,6 @@ impl AcpSession {
         goal: &str,
         diff_path: &str,
         context: &crate::backends::context::ContextProjection,
-        stats: &Arc<StdMutex<ReasonixRunnerStats>>,
     ) -> Result<PureReviewResult, ReasonixError> {
         let timeout_ms: u64 = std::env::var("COAGENT_AGENT_TIMEOUT_MS")
             .ok()
@@ -132,7 +131,6 @@ impl AcpSession {
         .await?;
 
         let mut collected_text = String::new();
-        let mut tool_calls = 0u64;
         loop {
             let line = tokio::time::timeout_at(deadline, read_line(&mut self.reader))
                 .await
@@ -169,29 +167,11 @@ impl AcpSession {
                         }
                     }
                     Some("tool_call") => {
-                        if let Some(review) = try_parse_review(&collected_text) {
-                            return Ok(review);
-                        }
-                        let tool_call_id = update
-                            .get("toolCallId")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        self.deny_tool_call(tool_call_id).await.map_err(|e| {
-                            ReasonixError::Protocol(format!("deny_tool_call failed: {e}"))
-                        })?;
-                        tool_calls += 1;
-                        {
-                            let mut stats = stats.lock().expect("stats in send_prompt");
-                            stats.tool_call_count += 1;
-                            stats.denied_tool_call_count += 1;
-                        }
-                        if tool_calls >= ReasonixRunner::MAX_TOOL_CALLS_PER_PROMPT {
-                            return Err(ReasonixError::Protocol(format!(
-                                "max tool calls ({}) exceeded: {} consecutive denied tool_calls",
-                                ReasonixRunner::MAX_TOOL_CALLS_PER_PROMPT,
-                                tool_calls
-                            )));
-                        }
+                        return parse_review_text(&collected_text).map_err(|e| {
+                            ReasonixError::Protocol(format!(
+                                "unsupported ACP tool_call before valid review JSON: {e}"
+                            ))
+                        });
                     }
                     _ => {}
                 }
@@ -199,24 +179,6 @@ impl AcpSession {
         }
 
         parse_review_text(&collected_text)
-    }
-
-    async fn deny_tool_call(&mut self, tool_call_id: &str) -> Result<(), ReasonixError> {
-        send_frame(
-            &mut self.stdin,
-            0,
-            "session/tool/result",
-            &serde_json::json!({
-                "sessionId": self.session_id,
-                "toolCallId": tool_call_id,
-                "status": "error",
-                "error": {
-                    "message": "tool unsupported in single-lane review_diff baseline",
-                    "code": "TOOL_UNSUPPORTED"
-                }
-            }),
-        )
-        .await
     }
 }
 
@@ -247,15 +209,10 @@ pub struct ReasonixRunnerStats {
     pub protocol_error_count: u64,
     pub io_error_count: u64,
     pub spawn_error_count: u64,
-    pub tool_call_count: u64,
-    pub denied_tool_call_count: u64,
     pub last_error: Option<String>,
 }
 
 impl ReasonixRunner {
-    /// Maximum number of tool_calls the runner will reject before failing the prompt.
-    const MAX_TOOL_CALLS_PER_PROMPT: u64 = 5;
-
     pub fn new(model: impl Into<String>, cwd: PathBuf) -> Self {
         Self {
             model: model.into(),
@@ -292,9 +249,7 @@ impl ReasonixRunner {
         let first = {
             let session = guard.as_mut().unwrap();
             self.record_prompt();
-            session
-                .send_prompt(goal, diff_path, context, &self.stats)
-                .await
+            session.send_prompt(goal, diff_path, context).await
         };
 
         match first {
@@ -323,9 +278,7 @@ impl ReasonixRunner {
                 };
                 self.record_session_created();
                 self.record_prompt();
-                let retry = session
-                    .send_prompt(goal, diff_path, context, &self.stats)
-                    .await;
+                let retry = session.send_prompt(goal, diff_path, context).await;
                 if let Err(retry_error) = &retry {
                     self.record_error(retry_error);
                 }
@@ -440,7 +393,6 @@ impl ReasonixError {
     /// Errors that are safe to retry once after reconnecting.
     fn is_retryable(&self) -> bool {
         matches!(self, Self::Io(_) | Self::Protocol(_))
-            && !self.to_string().contains("max tool calls")
     }
 }
 
@@ -567,12 +519,6 @@ fn parse_review_text(text: &str) -> Result<PureReviewResult, ReasonixError> {
     serde_json::from_str(text)
         .or_else(|_| extract_json(text))
         .map_err(|e| ReasonixError::Protocol(format!("parse review: {e}")))
-}
-
-fn try_parse_review(text: &str) -> Option<PureReviewResult> {
-    serde_json::from_str(text)
-        .or_else(|_| extract_json(text))
-        .ok()
 }
 
 #[cfg(test)]
@@ -832,71 +778,6 @@ mod tests {
         assert_eq!(result.verdict, "needs_fix");
         assert_eq!(result.summary, "Fake ACP review.");
         assert_eq!(runner.stats().prompt_count, 1);
-    }
-
-    #[tokio::test]
-    async fn reasonix_denies_tool_call_before_review_and_then_collects_review() {
-        let _guard = ENV_LOCK.lock().await;
-        let fake = FakeReasonix::new("tool-call-before-review");
-        let _env = TestEnv::set(&[
-            ("COAGENT_REASONIX_PATH", fake.executable_path()),
-            (
-                "COAGENT_FAKE_REASONIX_CASE",
-                "tool_call_before_review".into(),
-            ),
-            ("COAGENT_AGENT_TIMEOUT_MS", "1000".into()),
-        ]);
-
-        let runner = ReasonixRunner::new("fake-model", fake.dir.clone());
-
-        let result = runner
-            .run(
-                "review after denying tool call",
-                "changes.diff",
-                &ContextProjection::default(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result.verdict, "needs_fix");
-        let stats = runner.stats();
-        assert_eq!(stats.tool_call_count, 1);
-        assert_eq!(stats.denied_tool_call_count, 1);
-        assert_eq!(stats.prompt_count, 1);
-    }
-
-    #[tokio::test]
-    async fn reasonix_rejects_prompt_after_max_tool_calls_exceeded() {
-        let _guard = ENV_LOCK.lock().await;
-        let fake = FakeReasonix::new("tool-call-loop");
-        let _env = TestEnv::set(&[
-            ("COAGENT_REASONIX_PATH", fake.executable_path()),
-            ("COAGENT_FAKE_REASONIX_CASE", "tool_call_loop_6".into()),
-            ("COAGENT_AGENT_TIMEOUT_MS", "1000".into()),
-        ]);
-
-        let runner = ReasonixRunner::new("fake-model", fake.dir.clone());
-
-        let error = runner
-            .run(
-                "review with tool call loop",
-                "changes.diff",
-                &ContextProjection::default(),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, ReasonixError::Protocol(_)));
-        assert!(error.to_string().contains("max tool calls"));
-        let stats = runner.stats();
-        assert_eq!(
-            stats.tool_call_count,
-            ReasonixRunner::MAX_TOOL_CALLS_PER_PROMPT
-        );
-        assert_eq!(
-            stats.denied_tool_call_count,
-            ReasonixRunner::MAX_TOOL_CALLS_PER_PROMPT
-        );
     }
 
     #[tokio::test]
@@ -1247,8 +1128,6 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
 
         if ($case -eq "invalid_review") {
             $chunks = @("not valid json")
-        } elseif ($case -eq "tool_call_before_review" -or $case -eq "tool_call_loop_6") {
-            $chunks = @("let me think...")
         }
         else {
             $chunks = @(
@@ -1289,76 +1168,6 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                 }
             }
             Start-Sleep -Milliseconds 1000
-            exit 0
-        }
-
-        if ($case -eq "tool_call_before_review") {
-            $chunks = @("let me think...")
-            Write-Frame @{
-                jsonrpc = "2.0"
-                method = "session/update"
-                params = @{
-                    sessionId = "fake-session"
-                    update = @{
-                        sessionUpdate = "agent_message_chunk"
-                        content = @{ type = "text"; text = "let me think..." }
-                    }
-                }
-            }
-            Write-Frame @{
-                jsonrpc = "2.0"
-                method = "session/update"
-                params = @{
-                    sessionId = "fake-session"
-                    update = @{
-                        sessionUpdate = "tool_call"
-                        toolCallId = "call_before_review"
-                        title = "task"
-                        kind = "other"
-                        status = "pending"
-                        rawInput = @{ description = "need a tool before reviewing" }
-                    }
-                }
-            }
-            Start-Sleep -Milliseconds 100
-            # After denying tool_call, emit review JSON chunks
-            foreach ($chunk in @(
-                '{"verdict":"needs_fix","summary":"Fake ACP review.",';
-                '"findings":[],"tests_to_run":["cargo test -p coagent-mcp-server"],';
-                '"risks":[],"assumptions":[],"confidence":0.73}'
-            )) {
-                Write-Frame @{
-                    jsonrpc = "2.0"
-                    method = "session/update"
-                    params = @{
-                        sessionId = "fake-session"
-                        update = @{
-                            sessionUpdate = "agent_message_chunk"
-                            content = @{ type = "text"; text = $chunk }
-                        }
-                    }
-                }
-            }
-        }
-
-        if ($case -eq "tool_call_loop_6") {
-            for ($j = 1; $j -le 6; $j++) {
-                Write-Frame @{
-                    jsonrpc = "2.0"
-                    method = "session/update"
-                    params = @{
-                        sessionId = "fake-session"
-                        update = @{
-                            sessionUpdate = "tool_call"
-                            toolCallId = "call_loop_$j"
-                            title = "task"
-                            kind = "other"
-                            status = "pending"
-                            rawInput = @{ description = "loop iteration $j" }
-                        }
-                    }
-                }
-            }
             exit 0
         }
 
@@ -1442,21 +1251,6 @@ while IFS= read -r line; do
     if [ "$case_name" = "tool_call_after_review" ]; then
       printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake","title":"task","kind":"other","status":"pending","rawInput":{"description":"unneeded after valid JSON"}}}}\n'
       sleep 1
-      exit 0
-    fi
-    if [ "$case_name" = "tool_call_before_review" ]; then
-      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"let me think..."}}}}\n'
-      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"tool_call","toolCallId":"call_before_review","title":"task","kind":"other","status":"pending","rawInput":{"description":"need a tool before reviewing"}}}}\n'
-      sleep 0.1
-      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"{\"verdict\":\"needs_fix\",\"summary\":\"Fake ACP review.\","}}}}\n'
-      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\"findings\":[],\"tests_to_run\":[\"cargo test -p coagent-mcp-server\"],"}}}}\n'
-      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\"risks\":[],\"assumptions\":[],\"confidence\":0.73}"}}}}\n'
-    fi
-    if [ "$case_name" = "tool_call_loop_6" ]; then
-      printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"let me think..."}}}}\n'
-      for i in 1 2 3 4 5 6; do
-        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fake-session","update":{"sessionUpdate":"tool_call","toolCallId":"call_loop_%s","title":"task","kind":"other","status":"pending","rawInput":{"description":"loop iteration %s"}}}}\n' "$i" "$i"
-      done
       exit 0
     fi
     printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
