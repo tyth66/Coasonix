@@ -482,6 +482,12 @@ impl RuntimeKernel {
         Ok(state.value())
     }
 
+    /// Get a summary of a task including its state and recent decisions.
+    pub fn task_result(&self, task_id: &str) -> Result<Option<serde_json::Value>, RuntimeError> {
+        Ok(self.store.task_summary(task_id)?)
+    }
+
+
 }
 
 impl RuntimeDecision {

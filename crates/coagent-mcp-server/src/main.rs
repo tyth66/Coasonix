@@ -184,6 +184,30 @@ impl CoagentServer {
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
     
+    
+    #[tool(
+        name = "coagent.task_result",
+        description = "Get a summary of a Coagent task including its state and recent decisions."
+    )]
+    async fn task_result(
+        &self,
+        Parameters(params): Parameters<serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let task_id = params.get("task_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("task_id is required", None))?;
+        let result = {
+            let kernel = self.executor.ctx().kernel.lock().await;
+            kernel.task_result(task_id).map_err(|e| {
+                ErrorData::internal_error(format!("task_result failed: {e}"), None)
+            })?
+        };
+        let text = match result {
+            Some(summary) => serde_json::to_string(&summary).unwrap_or_default(),
+            None => serde_json::json!({"task_id": task_id, "state": "not_found"}).to_string(),
+        };
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
     #[tool(
         name = "coagent.cancel_task",
         description = "Cancel a running or queued Coagent task."

@@ -109,7 +109,19 @@ function Invoke-Cancel {
 function Invoke-Result {
     $repoRoot = Get-RepoRoot
     $jobId = if ($Arguments.Count -gt 0) { $Arguments[0] } else { $null }
-    Write-Output (@{ status = 'not_implemented'; jobId = $jobId } | ConvertTo-Json -Compress)
+
+    if (-not $jobId) {
+        $jobs = Read-Jobs $repoRoot
+        $finished = $jobs | Where-Object { $_.status -eq "completed" -or $_.status -eq "failed" -or $_.status -eq "cancelled" }
+        if ($finished.Count -eq 0) {
+            Write-Output (@{ status = "error"; message = "No finished jobs" } | ConvertTo-Json -Compress)
+            return
+        }
+        $jobId = $finished[0].id
+    }
+
+    $payload = @{ task_id = $jobId } | ConvertTo-Json -Compress
+    Write-Output $payload
 }
 
 # ---- command: setup ----

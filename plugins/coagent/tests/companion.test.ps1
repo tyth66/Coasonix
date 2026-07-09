@@ -49,7 +49,7 @@ Assert-True ($null -ne $result.task_id) "Cancel returns task_id"
 Write-Host "=== Result Command ==="
 $out = pwsh -NoProfile -Command ". '$companionScript' result test-job" 2>&1
 $result = $out | ConvertFrom-Json
-Assert-Equal 'not_implemented' $result.status 'Result reports not_implemented'
+Assert-True ($null -ne $result.task_id) "Result returns task_id"
 
 Write-Host "=== Script file exists ==="
 Assert-True (Test-Path $companionScript) 'Companion script file exists'

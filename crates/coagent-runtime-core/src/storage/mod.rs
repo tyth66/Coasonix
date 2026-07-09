@@ -404,6 +404,38 @@ impl RuntimeStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::from)
     }
 
+    /// Load a summary of a task: its state plus recent decisions and events.
+    pub fn task_summary(&self, task_id: &str) -> Result<Option<serde_json::Value>, StoreError> {
+        let state = match self.load_task_state(task_id) {
+            Ok(s) => s,
+            Err(StoreError::TaskStateNotFound(_)) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+
+        // Get recent runtime decisions
+        let mut dec_stmt = self.connection.prepare(
+            "SELECT decision, reasons_json, operation FROM runtime_decisions
+             WHERE task_id = ?1 ORDER BY id DESC LIMIT 5"
+        )?;
+        let decisions: Vec<serde_json::Value> = dec_stmt
+            .query_map(params![task_id], |row| {
+                Ok(serde_json::json!({
+                    "decision": row.get::<_, String>(0)?,
+                    "reasons": row.get::<_, String>(1)?,
+                    "operation": row.get::<_, String>(2)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(serde_json::json!({
+            "task_id": task_id,
+            "state": task_state_to_str(state.value()),
+            "agent_calls": state.agent_calls(),
+            "decisions": decisions,
+        })))
+    }
+
+
 
     pub fn transition_state_with_audit(
         &self,
