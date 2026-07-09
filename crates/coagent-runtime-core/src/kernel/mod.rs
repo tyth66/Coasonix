@@ -482,6 +482,55 @@ impl RuntimeKernel {
         Ok(state.value())
     }
 
+    /// Approve a task that is waiting for approval. Transitions WaitingApproval -> Running.
+    pub fn approve_task(&mut self, task_id: &str) -> Result<TaskStateValue, RuntimeError> {
+        let mut state = self.store
+            .load_task_state(task_id)
+            .map_err(RuntimeError::Store)?;
+        if state.value() != TaskStateValue::WaitingApproval {
+            return Err(RuntimeError::Store(
+                StoreError::InvalidTaskState(format!(
+                    "task {} is not waiting for approval (current state: {:?})",
+                    task_id, state.value()
+                ))
+            ));
+        }
+        state
+            .transition_to(TaskStateValue::Running)
+            .map_err(|e| RuntimeError::Store(
+                StoreError::InvalidTaskState(format!("{e:?}"))
+            ))?;
+
+        let audit = AuditEvent {
+            task_id: task_id.to_string(),
+            event_type: "task_approved".into(),
+            summary: format!("Task {task_id} approved"),
+            payload_json: serde_json::json!({"task_id": task_id}).to_string(),
+        };
+        self.write_audit(audit)?;
+        self.store.upsert_task_state(&state)
+            .map_err(RuntimeError::Store)?;
+        Ok(state.value())
+    }
+
+    /// Transition a task to WaitingApproval state (called by the pipeline when RequireApproval is returned).
+    pub fn transition_to_waiting_approval(&mut self, task_id: &str) -> Result<(), RuntimeError> {
+        let mut state = self.store
+            .load_task_state(task_id)
+            .map_err(RuntimeError::Store)?;
+        if state.value().is_terminal() {
+            return Err(RuntimeError::Store(
+                StoreError::InvalidTaskState(format!("task {task_id} is terminal"))
+            ));
+        }
+        let _ = state.transition_to(TaskStateValue::WaitingApproval);
+        self.store.upsert_task_state(&state)
+            .map_err(RuntimeError::Store)?;
+        Ok(())
+    }
+
+
+
     /// Get a summary of a task including its state and recent decisions.
     pub fn task_result(&self, task_id: &str) -> Result<Option<serde_json::Value>, RuntimeError> {
         Ok(self.store.task_summary(task_id)?)

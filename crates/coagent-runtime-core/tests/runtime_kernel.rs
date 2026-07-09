@@ -366,3 +366,72 @@ fn cancel_task_on_terminal_is_error() {
     fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn approve_task_transitions_waiting_approval_to_running() {
+    let root = temp_repo("approve_task");
+    let mut kernel = RuntimeKernel::initialize(config(root.clone())).expect("init");
+
+    // Create a task and move it to WaitingApproval
+    let mut state = TaskState::new("TASK-approve");
+    state.transition_to(TaskStateValue::Running).unwrap();
+    state.transition_to(TaskStateValue::WaitingApproval).unwrap();
+    let store = RuntimeStore::initialize(&root).expect("store");
+    store.upsert_task_state(&state).expect("upsert");
+
+    // Approve it
+    let new_state = kernel.approve_task("TASK-approve").expect("approve");
+    assert_eq!(new_state, TaskStateValue::Running);
+
+    // Verify in store
+    let stored = RuntimeStore::initialize(&root).expect("reopen");
+    let task = stored.load_task_state("TASK-approve").expect("load");
+    assert_eq!(task.value(), TaskStateValue::Running);
+
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn approve_task_rejects_non_waiting_state() {
+    let root = temp_repo("approve_reject");
+    let mut kernel = RuntimeKernel::initialize(config(root.clone())).expect("init");
+
+    let store = RuntimeStore::initialize(&root).expect("store");
+    let mut state = TaskState::new("TASK-running");
+    state.transition_to(TaskStateValue::Running).unwrap();
+    store.upsert_task_state(&state).expect("upsert");
+
+    // Trying to approve a running task should fail
+    let result = kernel.approve_task("TASK-running");
+    assert!(result.is_err());
+
+    // Trying to approve a completed task should fail
+    let mut state = TaskState::new("TASK-done");
+    state.transition_to(TaskStateValue::Running).unwrap();
+    state.transition_to(TaskStateValue::Completed).unwrap();
+    store.upsert_task_state(&state).expect("upsert");
+    let result = kernel.approve_task("TASK-done");
+    assert!(result.is_err());
+
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn transition_to_waiting_approval_updates_state() {
+    let root = temp_repo("wait_approval");
+    let mut kernel = RuntimeKernel::initialize(config(root.clone())).expect("init");
+
+    let store = RuntimeStore::initialize(&root).expect("store");
+    let mut state = TaskState::new("TASK-wait");
+    state.transition_to(TaskStateValue::Running).unwrap();
+    store.upsert_task_state(&state).expect("upsert");
+
+    kernel.transition_to_waiting_approval("TASK-wait").expect("transition");
+
+    let stored = RuntimeStore::initialize(&root).expect("reopen");
+    let task = stored.load_task_state("TASK-wait").expect("load");
+    assert_eq!(task.value(), TaskStateValue::WaitingApproval);
+
+    fs::remove_dir_all(&root).ok();
+}
+
+

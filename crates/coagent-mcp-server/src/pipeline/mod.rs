@@ -149,6 +149,11 @@ impl RuntimeToolExecutor {
 
         match decision.decision {
             RuntimeDecisionValue::RequireApproval => {
+                // Transition task to WaitingApproval state
+                {
+                    let mut kernel = self.ctx.kernel.lock().await;
+                    let _ = kernel.transition_to_waiting_approval(&task_id);
+                }
                 let _ = self.ctx.kernel.lock().await.write_audit(AuditEvent {
                     task_id: task_id.clone(),
                     event_type: "approval_required".into(),

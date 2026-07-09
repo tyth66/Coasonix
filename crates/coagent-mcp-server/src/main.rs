@@ -269,6 +269,33 @@ impl CoagentServer {
         };
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
+    
+    #[tool(
+        name = "coagent.approve_task",
+        description = "Approve a task that is waiting for approval. Transitions WaitingApproval -> Running."
+    )]
+    async fn approve_task(
+        &self,
+        Parameters(params): Parameters<serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let task_id = params.get("task_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("task_id is required", None))?;
+        let new_state = {
+            let mut kernel = self.executor.ctx().kernel.lock().await;
+            kernel.approve_task(task_id).map_err(|e| {
+                ErrorData::internal_error(format!("approve_task failed: {e}"), None)
+            })?
+        };
+        let result = serde_json::json!({
+            "task_id": task_id,
+            "state": format!("{new_state:?}").to_lowercase(),
+            "message": "Task approved. Re-invoke the original tool to proceed."
+        });
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string(&result).unwrap_or_default()
+        )]))
+    }
     #[tool(
         name = "coagent.cancel_task",
         description = "Cancel a running or queued Coagent task."
