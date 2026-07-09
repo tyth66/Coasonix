@@ -143,6 +143,29 @@ impl AcpSession {
             let msg: serde_json::Value = serde_json::from_str(&line)
                 .map_err(|e| ReasonixError::Protocol(format!("invalid frame: {e}")))?;
 
+            // Handle Reasonix outbound requests (e.g. session/request_permission)
+            if msg.get("id").is_some()
+                && msg.get("method").is_some()
+                && msg.get("method").and_then(|v| v.as_str()) != Some("session/update")
+                && msg.get("id").and_then(|v| v.as_i64()) != Some(id as i64)
+            {
+                let m = msg.get("method").and_then(|v| v.as_str()).unwrap_or("?");
+                match m {
+                    "session/request_permission" => {
+                        let outcome = handle_permission_request(&msg, stats);
+                        self.send_permission_response(
+                            msg.get("id").and_then(|v| v.as_i64()).unwrap_or(0) as u64,
+                            &outcome,
+                        )
+                        .await?;
+                    }
+                    _ => {
+                        eprintln!("[coagent] ignoring unrecognized outbound request: {m}");
+                    }
+                }
+                continue;
+            }
+
             if msg.get("id").and_then(|v| v.as_i64()) == Some(id as i64) {
                 if let Some(err) = msg.get("error") {
                     return Err(ReasonixError::Protocol(
@@ -173,10 +196,14 @@ impl AcpSession {
                             return Ok(review);
                         }
                         observed_tool_calls += 1;
-                        if observed_tool_calls <= ReasonixRunner::MAX_OBSERVED_TOOL_CALLS_PER_PROMPT {
+                        if observed_tool_calls <= ReasonixRunner::MAX_OBSERVED_TOOL_CALLS_PER_PROMPT
+                        {
                             let title = update.get("title").and_then(|v| v.as_str()).unwrap_or("?");
                             let kind = update.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
-                            let tool_call_id = update.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("?");
+                            let tool_call_id = update
+                                .get("toolCallId")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
                             eprintln!(
                                 "[coagent] tool_call #{}/{}: title={}, kind={}, id={}",
                                 observed_tool_calls,
@@ -216,6 +243,26 @@ impl AcpSession {
 
         parse_review_text(&collected_text)
     }
+
+    async fn send_permission_response(
+        &mut self,
+        request_id: u64,
+        outcome: &serde_json::Value,
+    ) -> Result<(), ReasonixError> {
+        let frame = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": outcome
+        });
+        self.stdin
+            .write_all(format!("{}\n", frame).as_bytes())
+            .await
+            .map_err(|e| ReasonixError::Io(e.to_string()))?;
+        self.stdin
+            .flush()
+            .await
+            .map_err(|e| ReasonixError::Io(e.to_string()))
+    }
 }
 
 // ── Reasonix Runner ──
@@ -249,7 +296,50 @@ pub struct ReasonixRunnerStats {
     pub tool_call_update_count: u64,
     pub completed_tool_call_count: u64,
     pub failed_tool_call_count: u64,
+    pub permission_request_count: u64,
+    pub auto_allowed_permission_count: u64,
+    pub auto_rejected_permission_count: u64,
     pub last_error: Option<String>,
+}
+
+// -- Permission Request Handling --
+
+fn handle_permission_request(
+    msg: &serde_json::Value,
+    stats: &Arc<StdMutex<ReasonixRunnerStats>>,
+) -> serde_json::Value {
+    let tool_call = msg.get("params").and_then(|p| p.get("toolCall"));
+    let title = tool_call
+        .and_then(|t| t.get("title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    let kind = tool_call
+        .and_then(|t| t.get("kind"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+
+    let mut stats = stats.lock().expect("stats");
+    stats.permission_request_count += 1;
+
+    let allowed = is_read_only_tool(title, kind);
+    let outcome = if allowed {
+        stats.auto_allowed_permission_count += 1;
+        serde_json::json!({ "outcome": "selected", "optionId": "allow_once" })
+    } else {
+        stats.auto_rejected_permission_count += 1;
+        serde_json::json!({ "outcome": "selected", "optionId": "reject_once" })
+    };
+
+    eprintln!(
+        "[coagent] permission_request: title={}, kind={}, allowed={}",
+        title, kind, allowed
+    );
+
+    outcome
+}
+
+fn is_read_only_tool(title: &str, _kind: &str) -> bool {
+    matches!(title, "read_file" | "grep" | "glob" | "ls" | "list_files")
 }
 
 impl ReasonixRunner {

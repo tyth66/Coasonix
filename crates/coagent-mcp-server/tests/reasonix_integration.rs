@@ -1,4 +1,4 @@
-﻿// Integration test: full review_diff round-trip with Reasonix backend.
+// Integration test: full review_diff round-trip with Reasonix backend.
 // Run: cargo test -p coagent-mcp-server --test reasonix_integration -- --ignored --nocapture
 
 use std::time::Instant;
@@ -164,7 +164,6 @@ async fn reasonix_real_review_diff() {
     drop(stdin);
     child.kill().await.ok();
     let _ = child.wait().await;
-
 
     assert!(
         !review_response.is_empty(),
