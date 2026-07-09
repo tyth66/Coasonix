@@ -74,14 +74,13 @@ async fn reasonix_real_review_diff() {
         .env("COAGENT_AGENT_TIMEOUT_MS", "180000")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
         .kill_on_drop(true)
         .spawn()
         .expect("Failed to start coagent-mcp-server");
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
-    let _stderr = child.stderr.take();
     let mut reader = BufReader::new(stdout);
 
     // Send initialize
@@ -166,11 +165,6 @@ async fn reasonix_real_review_diff() {
     child.kill().await.ok();
     let _ = child.wait().await;
 
-    let stderr_text = String::new();
-    // stderr is read on best-effort basis
-    if !stderr_text.is_empty() {
-        eprintln!("=== STDERR ===\n{}", stderr_text);
-    }
 
     assert!(
         !review_response.is_empty(),

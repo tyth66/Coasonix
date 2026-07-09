@@ -173,6 +173,19 @@ impl AcpSession {
                             return Ok(review);
                         }
                         observed_tool_calls += 1;
+                        if observed_tool_calls <= ReasonixRunner::MAX_OBSERVED_TOOL_CALLS_PER_PROMPT {
+                            let title = update.get("title").and_then(|v| v.as_str()).unwrap_or("?");
+                            let kind = update.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
+                            let tool_call_id = update.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("?");
+                            eprintln!(
+                                "[coagent] tool_call #{}/{}: title={}, kind={}, id={}",
+                                observed_tool_calls,
+                                ReasonixRunner::MAX_OBSERVED_TOOL_CALLS_PER_PROMPT,
+                                title,
+                                kind,
+                                tool_call_id
+                            );
+                        }
                         {
                             let mut stats = stats.lock().expect("stats in send_prompt");
                             stats.tool_call_count += 1;
