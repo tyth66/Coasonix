@@ -455,6 +455,10 @@ impl RuntimeKernel {
             ));
         }
     }
+    /// List all active (non-terminal) tasks with their current state.
+    pub fn list_jobs(&self) -> Result<Vec<serde_json::Value>, RuntimeError> {
+        Ok(self.store.list_active_tasks()?)
+    }
 }
 
 impl RuntimeDecision {

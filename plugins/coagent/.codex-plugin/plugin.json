@@ -1,0 +1,37 @@
+{
+  "name": "coagent",
+  "version": "1.0.0",
+  "description": "Gated code review, cross-agent dispatch, background task management, and session transfer for Codex.",
+  "author": {
+    "name": "Coagent"
+  },
+  "homepage": "https://github.com/coagent",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "audit",
+    "gating",
+    "multi-agent",
+    "session-transfer"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Coagent",
+    "shortDescription": "Gated code review, cross-agent dispatch, and session transfer",
+    "longDescription": "Coagent provides a local multi-agent runtime layer between Codex and external expert agents. It owns tool registration, task/operation/attempt state, permission gating, context projection, ACP session management, backend selection, audit, and recovery.",
+    "developerName": "Coagent",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Review my uncommitted changes",
+      "Run an adversarial review of this feature branch",
+      "Transfer this session to Codex"
+    ],
+    "brandColor": "#10B981"
+  }
+}

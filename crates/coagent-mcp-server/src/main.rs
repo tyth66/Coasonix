@@ -167,6 +167,22 @@ impl CoagentServer {
             .await
     }
 
+    
+    #[tool(
+        name = "coagent.list_jobs",
+        description = "List all active (non-terminal) Coagent jobs with their current state."
+    )]
+    async fn list_jobs(&self) -> Result<CallToolResult, ErrorData> {
+        let jobs = {
+            let kernel = self.executor.ctx().kernel.lock().await;
+            kernel.list_jobs().map_err(|e| {
+                ErrorData::internal_error(format!("list_jobs failed: {e}"), None)
+            })?
+        };
+        let text = serde_json::to_string(&jobs)
+            .unwrap_or_else(|_| r#"[]"#.into());
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
     #[tool(
         name = "coagent.runtime_status",
         description = "Return the current Coagent runtime status without invoking any backend."

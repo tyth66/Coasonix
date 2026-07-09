@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -File ./scripts/post-edit-review.ps1",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

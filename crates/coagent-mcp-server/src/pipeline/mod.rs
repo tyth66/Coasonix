@@ -50,6 +50,13 @@ pub struct RuntimeToolExecutor {
 }
 
 impl RuntimeToolExecutor {
+    /// Access the executor context (for tools that bypass the full pipeline).
+    pub fn ctx(&self) -> &ExecutorContext {
+        &self.ctx
+    }
+}
+
+impl RuntimeToolExecutor {
     pub fn new(ctx: ExecutorContext) -> Self {
         Self { ctx }
     }

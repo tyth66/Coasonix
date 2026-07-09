@@ -1,0 +1,13 @@
+interface:
+  display_name: "Coagent"
+  short_description: "Gated code diff review with audit and policy enforcement"
+  brand_color: "#7C3AED"
+  default_prompt: "Use Coagent to review this diff: prepare .agent/diffs/current.diff, then call reasonix.review_diff."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "coagent"
+      description: "Coagent MCP server providing reasonix.review_diff"
+      transport: "stdio"
+      url: "D:/Coagent/target/debug/coagent-mcp-server.exe"

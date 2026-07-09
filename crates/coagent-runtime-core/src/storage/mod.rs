@@ -380,6 +380,31 @@ impl RuntimeStore {
         ))
     }
 
+    /// List all non-terminal tasks with their current state and step summary.
+    pub fn list_active_tasks(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        let mut stmt = self.connection.prepare(
+            "SELECT t.task_id, ts.state, ts.agent_calls,
+                    (SELECT COUNT(*) FROM runtime_steps rs WHERE rs.task_id = t.task_id) as step_count,
+                    (SELECT MAX(rs.created_at_ms) FROM runtime_steps rs WHERE rs.task_id = t.task_id) as last_step_ms
+             FROM tasks t
+             JOIN task_state ts ON t.task_id = ts.task_id
+             WHERE ts.state NOT IN ('completed', 'failed', 'cancelled')
+             ORDER BY last_step_ms DESC NULLS LAST
+             LIMIT 50"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(serde_json::json!({
+                "task_id": row.get::<_, String>(0)?,
+                "state": row.get::<_, String>(1)?,
+                "agent_calls": row.get::<_, i64>(2)?,
+                "step_count": row.get::<_, i64>(3)?,
+                "last_step_ms": row.get::<_, Option<i64>>(4)?,
+            }))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::from)
+    }
+
+
     pub fn transition_state_with_audit(
         &self,
         task_id: &str,

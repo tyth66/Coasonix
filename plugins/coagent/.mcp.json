@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "coagent": {
+      "type": "stdio",
+      "command": "D:/Coagent/target/release/coagent-mcp-server.exe",
+      "env": {
+        "COAGENT_REPO_ROOT": "D:/Coagent",
+        "COAGENT_BACKEND": "mock"
+      }
+    }
+  }
+}
