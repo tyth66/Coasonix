@@ -270,6 +270,80 @@ impl CoagentServer {
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
     
+    
+    #[tool(
+        name = "coagent.export_session",
+        description = "Export the full history of a Coagent task as a serializable JSON object."
+    )]
+    async fn export_session(
+        &self,
+        Parameters(params): Parameters<serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let task_id = params.get("task_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("task_id is required", None))?;
+        let result = {
+            let kernel = self.executor.ctx().kernel.lock().await;
+            kernel.export_task(task_id).map_err(|e| {
+                ErrorData::internal_error(format!("export_session failed: {e}"), None)
+            })?
+        };
+        let text = match result {
+            Some(data) => serde_json::to_string(&data).unwrap_or_default(),
+            None => serde_json::json!({"task_id": task_id, "state": "not_found"}).to_string(),
+        };
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    #[tool(
+        name = "coagent.resume_task",
+        description = "Resume a Coagent task by loading its state and returning actionable next steps."
+    )]
+    async fn resume_task(
+        &self,
+        Parameters(params): Parameters<serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let task_id = params.get("task_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("task_id is required", None))?;
+        let result = {
+            let kernel = self.executor.ctx().kernel.lock().await;
+            kernel.resume_task(task_id).map_err(|e| {
+                ErrorData::internal_error(format!("resume_task failed: {e}"), None)
+            })?
+        };
+        let text = match result {
+            Some(data) => serde_json::to_string(&data).unwrap_or_default(),
+            None => serde_json::json!({"task_id": task_id, "state": "not_found"}).to_string(),
+        };
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    #[tool(
+        name = "coagent.transfer_session",
+        description = "Import an external agent session into Coagent. Currently supports Claude Code JSONL sessions."
+    )]
+    async fn transfer_session(
+        &self,
+        Parameters(params): Parameters<serde_json::Value>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let source_path = params.get("source_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ErrorData::invalid_params("source_path is required", None))?;
+        let source_type = params.get("source_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("claude");
+
+        let result = serde_json::json!({
+            "source_path": source_path,
+            "source_type": source_type,
+            "status": "not_implemented",
+            "message": "Session transfer requires the Codex app-server externalAgentConfig/import API. Use codex resume <session-id> directly for now."
+        });
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string(&result).unwrap_or_default()
+        )]))
+    }
     #[tool(
         name = "coagent.approve_task",
         description = "Approve a task that is waiting for approval. Transitions WaitingApproval -> Running."

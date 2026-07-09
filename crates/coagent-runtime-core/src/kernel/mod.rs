@@ -536,6 +536,41 @@ impl RuntimeKernel {
         Ok(self.store.task_summary(task_id)?)
     }
 
+    /// Export the full history of a task as a serializable JSON object.
+    pub fn export_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, RuntimeError> {
+        Ok(self.store.export_task(task_id)?)
+    }
+
+    /// Resume a task by loading its state and returning actionable next steps.
+    pub fn resume_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, RuntimeError> {
+        let state = match self.store.load_task_state(task_id) {
+            Ok(s) => s,
+            Err(StoreError::TaskStateNotFound(_)) => return Ok(None),
+            Err(e) => return Err(RuntimeError::Store(e)),
+        };
+
+        let summary = self.store.task_summary(task_id)?.unwrap_or_default();
+        let mut result = serde_json::json!({
+            "task_id": task_id,
+            "state": format!("{:?}", state.value()).to_lowercase(),
+            "is_terminal": state.value().is_terminal(),
+            "summary": summary,
+        });
+
+        let action = match state.value() {
+            TaskStateValue::Queued | TaskStateValue::Running => "Task is already active.",
+            TaskStateValue::Blocked => "Task is blocked. Check reason or call coagent.cancel_task.",
+            TaskStateValue::WaitingApproval => "Task needs approval. Call coagent.approve_task.",
+            TaskStateValue::Retrying => "Task is retrying. Call coagent.list_jobs for status.",
+            TaskStateValue::PartiallyCompleted => "Subtasks pending. Complete them or call coagent.complete_task.",
+            TaskStateValue::Completed | TaskStateValue::Failed | TaskStateValue::Cancelled => "Task is terminal.",
+        };
+        result["suggested_action"] = serde_json::Value::String(action.to_string());
+
+        Ok(Some(result))
+    }
+
+
 
 }
 

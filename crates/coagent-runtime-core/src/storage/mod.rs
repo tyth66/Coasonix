@@ -435,6 +435,90 @@ impl RuntimeStore {
         })))
     }
 
+    /// Export the full history of a task: state, decisions, events, steps, attempts, and schema validations.
+    pub fn export_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, StoreError> {
+        let state = match self.load_task_state(task_id) {
+            Ok(s) => s,
+            Err(StoreError::TaskStateNotFound(_)) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+
+        // Decisions
+        let mut dec_stmt = self.connection.prepare(
+            "SELECT decision, reasons_json, operation, request_id FROM runtime_decisions
+             WHERE task_id = ?1 ORDER BY id"
+        )?;
+        let decisions: Vec<serde_json::Value> = dec_stmt
+            .query_map(params![task_id], |row| {
+                Ok(serde_json::json!({
+                    "decision": row.get::<_, String>(0)?,
+                    "reasons": row.get::<_, String>(1)?,
+                    "operation": row.get::<_, String>(2)?,
+                    "request_id": row.get::<_, Option<String>>(3)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Events
+        let events = self.runtime_events(task_id)?;
+        let events_json: Vec<serde_json::Value> = events.iter().map(|e| {
+            serde_json::json!({
+                "event_type": e.event_type,
+                "task_sequence": e.task_sequence,
+                "step_id": e.step_id,
+                "payload_json": e.payload_json,
+            })
+        }).collect();
+
+        // Steps
+        let mut step_stmt = self.connection.prepare(
+            "SELECT id, request_id, operation, state FROM runtime_steps
+             WHERE task_id = ?1 ORDER BY id"
+        )?;
+        let steps: Vec<serde_json::Value> = step_stmt
+            .query_map(params![task_id], |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, i64>(0)?,
+                    "request_id": row.get::<_, Option<String>>(1)?,
+                    "operation": row.get::<_, String>(2)?,
+                    "state": row.get::<_, String>(3)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Attempts
+        let mut att_stmt = self.connection.prepare(
+            "SELECT id, request_id, operation, backend_id, attempt_number, state, error_json
+             FROM operation_attempts WHERE task_id = ?1 ORDER BY id"
+        )?;
+        let attempts: Vec<serde_json::Value> = att_stmt
+            .query_map(params![task_id], |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, i64>(0)?,
+                    "request_id": row.get::<_, Option<String>>(1)?,
+                    "operation": row.get::<_, String>(2)?,
+                    "backend_id": row.get::<_, String>(3)?,
+                    "attempt_number": row.get::<_, i64>(4)?,
+                    "state": row.get::<_, String>(5)?,
+                    "error_json": row.get::<_, Option<String>>(6)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(serde_json::json!({
+            "schema_version": "coagent_export_v1",
+            "task_id": task_id,
+            "state": task_state_to_str(state.value()),
+            "agent_calls": state.agent_calls(),
+            "retry_count": state.retry_count(),
+            "decisions": decisions,
+            "steps": steps,
+            "attempts": attempts,
+            "events": events_json,
+        })))
+    }
+
+
 
 
     pub fn transition_state_with_audit(

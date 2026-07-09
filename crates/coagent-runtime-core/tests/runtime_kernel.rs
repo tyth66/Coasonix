@@ -434,4 +434,73 @@ fn transition_to_waiting_approval_updates_state() {
     fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn export_task_returns_full_history() {
+    let root = temp_repo("export_task");
+    let mut kernel = RuntimeKernel::initialize(config(root.clone())).expect("init");
+
+    // Create task with operations
+    let request = RuntimeOperationRequest {
+        task_id: "TASK-export".into(),
+        request_id: Some("REQ-1".into()),
+        operation: "coagent.review_diff".into(),
+        permission_level: PermissionLevel::L1DiffReview,
+        resources: ResourceSet {
+            read_paths: vec![".agent/diffs/test.diff".into()],
+            write_paths: vec![".agent/results/out.json".into()],
+            network: false,
+        },
+    };
+    kernel.evaluate_operation(request);
+    kernel.complete_operation("TASK-export", Some("REQ-1"), "coagent.review_diff").expect("complete op");
+    kernel.complete_task("TASK-export").expect("complete task");
+
+    let exported = kernel.export_task("TASK-export").expect("export").expect("some");
+    assert_eq!(exported["task_id"], "TASK-export");
+    assert_eq!(exported["state"], "completed");
+    assert_eq!(exported["schema_version"], "coagent_export_v1");
+    // Should have at least one decision and one step
+    assert!(exported["decisions"].as_array().unwrap().len() > 0, "should have decisions");
+    assert!(exported["steps"].as_array().unwrap().len() > 0, "should have steps");
+
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn export_task_returns_none_for_unknown_task() {
+    let root = temp_repo("export_unknown");
+    let kernel = RuntimeKernel::initialize(config(root.clone())).expect("init");
+    let result = kernel.export_task("TASK-nonexistent").expect("export");
+    assert!(result.is_none());
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn resume_task_suggests_action_for_running() {
+    let root = temp_repo("resume_task");
+    let mut kernel = RuntimeKernel::initialize(config(root.clone())).expect("init");
+
+    let request = RuntimeOperationRequest {
+        task_id: "TASK-resume".into(),
+        request_id: Some("REQ-1".into()),
+        operation: "coagent.review_diff".into(),
+        permission_level: PermissionLevel::L1DiffReview,
+        resources: ResourceSet {
+            read_paths: vec![".agent/diffs/test.diff".into()],
+            write_paths: vec![".agent/results/out.json".into()],
+            network: false,
+        },
+    };
+    kernel.evaluate_operation(request);
+
+    let result = kernel.resume_task("TASK-resume").expect("resume").expect("some");
+    assert_eq!(result["task_id"], "TASK-resume");
+    assert_eq!(result["state"], "running");
+    assert!(!result["is_terminal"].as_bool().unwrap());
+    assert!(result["suggested_action"].as_str().unwrap().len() > 0);
+
+    fs::remove_dir_all(&root).ok();
+}
+
+
 
